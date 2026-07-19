@@ -108,7 +108,7 @@ else
 fi
 
 cd "$INSTALL_DIR"
-chmod +x install.sh 2>/dev/null || true
+chmod +x install.sh update.sh 2>/dev/null || true
 
 # --- .env --------------------------------------------------------------------
 if [[ ! -f .env ]]; then

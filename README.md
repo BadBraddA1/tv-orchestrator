@@ -16,10 +16,22 @@ No Sonarr / Overseerr / Prowlarr required for this TV flow.
 On the R620 Proxmox host (or a Docker CT/VM):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh | bash
+curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh?$(date +%s)" | bash
 ```
 
-That installs Docker if needed, clones to `~/tv-orchestrator`, builds the container, and starts it on port **3080**.
+First open of the site runs a **setup walkthrough** (NZBGet, NZBGeek, NZB Finder, Plex token, optional push).
+
+### Push updates to the box
+
+On the Proxmox host:
+
+```bash
+cd /root/tv-orchestrator && ./update.sh
+# or:
+curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/update.sh | bash
+```
+
+Or in the UI: **Admin → /update — pull & rebuild** (needs docker.sock + project mount — included in compose).
 
 With your real paths / keys:
 

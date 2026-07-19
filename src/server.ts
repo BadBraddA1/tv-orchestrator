@@ -4,7 +4,7 @@ import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseCookie, serialize as serializeCookie } from "cookie";
 import bcrypt from "bcryptjs";
-import { config } from "./config.js";
+import { config, reloadConfigFromSettings } from "./config.js";
 import { migrate } from "./db/schema.js";
 import {
   addActivity,
@@ -25,6 +25,12 @@ import {
   type User,
 } from "./db/repo.js";
 import {
+  getSettings,
+  isSetupComplete,
+  markSetupComplete,
+  setSettings,
+} from "./db/settings.js";
+import {
   getShow,
   searchShows,
   stripHtml,
@@ -36,6 +42,7 @@ import {
   fetchAllEpisodesWithWatch,
   plexConfigured,
 } from "./services/plex.js";
+import { canSelfUpdate, runHostUpdate } from "./services/update.js";
 import {
   monitorOnce,
   pollDownloadsOnce,
@@ -43,6 +50,23 @@ import {
   syncSeriesEpisodes,
 } from "./workers/pipeline.js";
 import { scanVideoFiles } from "./services/library.js";
+
+const SETUP_KEYS = [
+  "nzbget_url",
+  "nzbget_user",
+  "nzbget_pass",
+  "nzbget_category",
+  "nzbgeek_url",
+  "nzbgeek_api_key",
+  "nzbfinder_url",
+  "nzbfinder_api_key",
+  "plex_url",
+  "plex_token",
+  "pushover_user_key",
+  "pushover_app_token",
+  "ntfy_topic",
+  "quality_profile",
+] as const;
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "..", "public");
@@ -132,11 +156,136 @@ async function handleApi(
       ok: true,
       nzbget: nzb,
       plex: await plexConfigured(),
+      setupComplete: isSetupComplete(),
       indexers: {
         nzbgeek: Boolean(config.nzbgeek.apiKey),
         nzbfinder: Boolean(config.nzbfinder.apiKey),
       },
     });
+    return true;
+  }
+
+  if (path === "/api/setup/status" && method === "GET") {
+    const saved = getSettings([...SETUP_KEYS]);
+    sendJson(res, 200, {
+      complete: isSetupComplete(),
+      values: {
+        nzbget_url: saved.nzbget_url || config.nzbget.url,
+        nzbget_user: saved.nzbget_user || config.nzbget.user,
+        nzbget_pass: saved.nzbget_pass || config.nzbget.pass,
+        nzbget_category: saved.nzbget_category || config.nzbget.category,
+        nzbgeek_url: saved.nzbgeek_url || config.nzbgeek.url,
+        nzbgeek_api_key: saved.nzbgeek_api_key || config.nzbgeek.apiKey,
+        nzbfinder_url: saved.nzbfinder_url || config.nzbfinder.url,
+        nzbfinder_api_key: saved.nzbfinder_api_key || config.nzbfinder.apiKey,
+        plex_url: saved.plex_url || config.plex.url,
+        plex_token: saved.plex_token || config.plex.token,
+        pushover_user_key: saved.pushover_user_key || config.pushover.userKey,
+        pushover_app_token: saved.pushover_app_token || config.pushover.appToken,
+        ntfy_topic: saved.ntfy_topic || config.ntfy.topic,
+        quality_profile: saved.quality_profile || config.qualityProfile,
+      },
+      tips: {
+        nzbget: "Open NZBGet → Settings → Security for username/password. Create category tv-orch under Categories.",
+        nzbgeek: "NZBGeek → API → copy your Newznab API key (api.nzbgeek.info).",
+        nzbfinder: "NZB Finder account → API / Newznab key.",
+        plex: "Plex → account → XML or https://support.plex.tv for X-Plex-Token from any plex URL (&X-Plex-Token=).",
+        push: "Optional: Pushover user key + app token, or an ntfy topic name.",
+      },
+    });
+    return true;
+  }
+
+  if (path === "/api/setup/save" && method === "POST") {
+    const auth = requireUser(req);
+    const open = !isSetupComplete();
+    if (!open && (!auth || auth.user.role !== "admin")) {
+      sendJson(res, 401, { error: "Admin required after setup" });
+      return true;
+    }
+    const body = await readJson<Record<string, unknown>>(req);
+    const map: Record<string, string> = {};
+    for (const key of SETUP_KEYS) {
+      if (body[key] != null) map[key] = String(body[key]).trim();
+    }
+    setSettings(map);
+    reloadConfigFromSettings(getSettings([...SETUP_KEYS]));
+    if (body.finish === true || body.finish === "true" || body.finish === "1") {
+      markSetupComplete();
+      addActivity({
+        kind: "setup",
+        message: "Setup walkthrough completed",
+        userId: auth?.user.id,
+      });
+    }
+    const nzb = await nzbgetPing();
+    sendJson(res, 200, {
+      ok: true,
+      complete: isSetupComplete(),
+      checks: {
+        nzbget: nzb,
+        nzbgeek: Boolean(config.nzbgeek.apiKey),
+        nzbfinder: Boolean(config.nzbfinder.apiKey),
+        plex: Boolean(config.plex.token),
+      },
+    });
+    return true;
+  }
+
+  if (path === "/api/setup/test-nzbget" && method === "POST") {
+    const body = await readJson<Record<string, string>>(req);
+    if (body.nzbget_url) {
+      setSettings({
+        nzbget_url: body.nzbget_url,
+        nzbget_user: body.nzbget_user || "",
+        nzbget_pass: body.nzbget_pass || "",
+      });
+      reloadConfigFromSettings(getSettings([...SETUP_KEYS]));
+    }
+    const ok = await nzbgetPing();
+    sendJson(res, 200, { ok });
+    return true;
+  }
+
+  if ((path === "/api/admin/update" || path === "/api/update") && method === "POST") {
+    const auth = requireUser(req);
+    if (!auth || auth.user.role !== "admin") {
+      sendJson(res, 403, { error: "Admin only" });
+      return true;
+    }
+    const check = await canSelfUpdate();
+    if (!check.ok) {
+      sendJson(res, 200, {
+        ok: false,
+        mode: "host",
+        message: check.reason,
+        hostCommand:
+          "cd /root/tv-orchestrator && ./update.sh\n# or:\ncurl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/update.sh | bash",
+      });
+      return true;
+    }
+    addActivity({
+      kind: "update",
+      message: "Admin triggered container update",
+      userId: auth.user.id,
+    });
+    const result = await runHostUpdate();
+    sendJson(res, 200, {
+      ok: result.code === 0,
+      mode: "self",
+      code: result.code,
+      log: result.log.slice(-8000),
+    });
+    return true;
+  }
+
+  if (path === "/api/admin/update-status" && method === "GET") {
+    const auth = requireUser(req);
+    if (!auth || auth.user.role !== "admin") {
+      sendJson(res, 403, { error: "Admin only" });
+      return true;
+    }
+    sendJson(res, 200, await canSelfUpdate());
     return true;
   }
 
@@ -414,6 +563,7 @@ function normalize(s: string): string {
 
 export async function startServer(): Promise<void> {
   migrate();
+  reloadConfigFromSettings(getSettings([...SETUP_KEYS]));
   await ensureAdmin();
 
   const server = createServer(async (req, res) => {

@@ -77,6 +77,11 @@ export function migrate(): void {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_episodes_status ON episodes(status);
     CREATE INDEX IF NOT EXISTS idx_activity_created ON activity(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);

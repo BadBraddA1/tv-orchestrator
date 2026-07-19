@@ -1,4 +1,5 @@
 (() => {
+  const setupView = document.getElementById("setupView");
   const loginView = document.getElementById("loginView");
   const mainView = document.getElementById("mainView");
   const loginForm = document.getElementById("loginForm");
@@ -18,8 +19,76 @@
   const healthBox = document.getElementById("healthBox");
   const scanBtn = document.getElementById("scanBtn");
   const monitorBtn = document.getElementById("monitorBtn");
+  const updateBtn = document.getElementById("updateBtn");
+  const updateStatus = document.getElementById("updateStatus");
+  const updateLog = document.getElementById("updateLog");
+  const setupAgainBtn = document.getElementById("setupAgainBtn");
+  const setupForm = document.getElementById("setupForm");
+  const setupTitle = document.getElementById("setupTitle");
+  const setupTip = document.getElementById("setupTip");
+  const setupSteps = document.getElementById("setupSteps");
+  const setupBack = document.getElementById("setupBack");
+  const setupNext = document.getElementById("setupNext");
+  const setupTest = document.getElementById("setupTest");
+  const setupMsg = document.getElementById("setupMsg");
 
   let me = null;
+  let setupValues = {};
+  let setupTips = {};
+  let setupStep = 0;
+  let forceSetup = false;
+
+  const STEPS = [
+    {
+      id: "nzbget",
+      title: "NZBGet on the R620",
+      tipKey: "nzbget",
+      fields: [
+        { key: "nzbget_url", label: "NZBGet URL", placeholder: "http://127.0.0.1:6789" },
+        { key: "nzbget_user", label: "Username" },
+        { key: "nzbget_pass", label: "Password", type: "password" },
+        { key: "nzbget_category", label: "Category", placeholder: "tv-orch" },
+      ],
+      test: true,
+    },
+    {
+      id: "indexers",
+      title: "Usenet indexers",
+      tipKey: "nzbgeek",
+      fields: [
+        { key: "nzbgeek_url", label: "NZBGeek Newznab URL", placeholder: "https://api.nzbgeek.info" },
+        { key: "nzbgeek_api_key", label: "NZBGeek API key", type: "password" },
+        { key: "nzbfinder_url", label: "NZB Finder Newznab URL", placeholder: "https://nzbfinder.ws" },
+        { key: "nzbfinder_api_key", label: "NZB Finder API key", type: "password" },
+      ],
+    },
+    {
+      id: "plex",
+      title: "Plex (stale cleanup)",
+      tipKey: "plex",
+      fields: [
+        { key: "plex_url", label: "Plex URL", placeholder: "http://127.0.0.1:32400" },
+        { key: "plex_token", label: "X-Plex-Token", type: "password" },
+        {
+          key: "quality_profile",
+          label: "Preferred quality",
+          type: "select",
+          options: ["1080p", "720p", "any"],
+        },
+      ],
+    },
+    {
+      id: "notify",
+      title: "Phone alerts (optional)",
+      tipKey: "push",
+      fields: [
+        { key: "pushover_user_key", label: "Pushover user key" },
+        { key: "pushover_app_token", label: "Pushover app token", type: "password" },
+        { key: "ntfy_topic", label: "Or ntfy topic" },
+      ],
+      finish: true,
+    },
+  ];
 
   async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -37,14 +106,18 @@
     } catch {
       data = { error: text };
     }
-    if (!res.ok) {
-      throw new Error(data?.error || `HTTP ${res.status}`);
-    }
+    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
     return data;
   }
 
-  function showMain() {
+  function hideAll() {
+    setupView.hidden = true;
     loginView.hidden = true;
+    mainView.hidden = true;
+  }
+
+  function showMain() {
+    hideAll();
     mainView.hidden = false;
     whoami.textContent = `${me.username}${me.role === "admin" ? " · admin" : ""}`;
     document.querySelectorAll(".admin-only").forEach((el) => {
@@ -54,9 +127,141 @@
 
   function showLogin() {
     me = null;
+    hideAll();
     loginView.hidden = false;
-    mainView.hidden = true;
   }
+
+  function showSetup() {
+    hideAll();
+    setupView.hidden = false;
+    renderSetupStep();
+  }
+
+  function renderSetupStep() {
+    const step = STEPS[setupStep];
+    setupTitle.textContent = step.title;
+    setupTip.textContent = setupTips[step.tipKey] || "";
+    setupSteps.replaceChildren();
+    STEPS.forEach((s, i) => {
+      const chip = document.createElement("span");
+      chip.textContent = `${i + 1}. ${s.id}`;
+      if (i === setupStep) chip.classList.add("on");
+      setupSteps.appendChild(chip);
+    });
+
+    setupForm.replaceChildren();
+    for (const field of step.fields) {
+      const label = document.createElement("label");
+      label.append(field.label);
+      let input;
+      if (field.type === "select") {
+        input = document.createElement("select");
+        input.name = field.key;
+        for (const opt of field.options) {
+          const o = document.createElement("option");
+          o.value = opt;
+          o.textContent = opt;
+          if ((setupValues[field.key] || "1080p") === opt) o.selected = true;
+          input.appendChild(o);
+        }
+      } else {
+        input = document.createElement("input");
+        input.name = field.key;
+        input.type = field.type || "text";
+        if (field.placeholder) input.placeholder = field.placeholder;
+        input.value = setupValues[field.key] || "";
+      }
+      label.appendChild(input);
+      setupForm.appendChild(label);
+    }
+
+    setupBack.hidden = setupStep === 0;
+    setupTest.hidden = !step.test;
+    setupNext.textContent = step.finish ? "Finish & start using" : "Continue";
+    setupMsg.hidden = true;
+  }
+
+  function collectSetupFields() {
+    const fd = new FormData(setupForm);
+    for (const [k, v] of fd.entries()) setupValues[k] = String(v);
+  }
+
+  async function start() {
+    const status = await api("/api/setup/status");
+    setupValues = { ...status.values };
+    setupTips = status.tips || {};
+
+    if (!status.complete || forceSetup) {
+      forceSetup = false;
+      // Prefer login first if they already have an admin account flow; still allow open wizard
+      try {
+        me = await api("/api/auth/me");
+        showSetup();
+      } catch {
+        showSetup();
+      }
+      return;
+    }
+
+    try {
+      me = await api("/api/auth/me");
+      showMain();
+    } catch {
+      showLogin();
+    }
+  }
+
+  setupBack.addEventListener("click", () => {
+    collectSetupFields();
+    setupStep = Math.max(0, setupStep - 1);
+    renderSetupStep();
+  });
+
+  setupTest.addEventListener("click", async () => {
+    collectSetupFields();
+    setupMsg.hidden = false;
+    setupMsg.textContent = "Testing NZBGet…";
+    try {
+      const r = await api("/api/setup/test-nzbget", {
+        method: "POST",
+        body: JSON.stringify(setupValues),
+      });
+      setupMsg.textContent = r.ok
+        ? "NZBGet connected."
+        : "Could not reach NZBGet — check URL/user/pass (and firewall from this container).";
+    } catch (err) {
+      setupMsg.textContent = err.message;
+    }
+  });
+
+  setupNext.addEventListener("click", async () => {
+    collectSetupFields();
+    const step = STEPS[setupStep];
+    setupMsg.hidden = false;
+    setupMsg.textContent = "Saving…";
+    try {
+      const payload = { ...setupValues };
+      if (step.finish) payload.finish = true;
+      const r = await api("/api/setup/save", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      if (step.finish) {
+        setupMsg.textContent = "Setup complete. Sign in to continue.";
+        if (me) showMain();
+        else showLogin();
+        return;
+      }
+      setupStep += 1;
+      renderSetupStep();
+      setupMsg.hidden = true;
+      if (r.checks) {
+        // keep silent on intermediate saves
+      }
+    } catch (err) {
+      setupMsg.textContent = err.message;
+    }
+  });
 
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -86,7 +291,9 @@
           password: fd.get("password"),
         }),
       });
-      showMain();
+      const status = await api("/api/setup/status");
+      if (!status.complete) showSetup();
+      else showMain();
     } catch (err) {
       loginError.textContent = err.message;
       loginError.hidden = false;
@@ -219,7 +426,7 @@
     const gb = (data.totalBytes / 1e9).toFixed(1);
     staleSummary.textContent = data.plexConnected
       ? `${data.items.length} stale items (~${gb} GB). Not watched in ${data.staleDays} days (or never).`
-      : `${data.items.length} candidates by disk scan. Add PLEX_TOKEN for watch-based stale detection.`;
+      : `${data.items.length} candidates by disk scan. Add Plex token in setup for watch-based stale detection.`;
     staleList.replaceChildren();
     if (!data.items.length) {
       staleList.innerHTML = "<p class='sub'>Nothing looks stale. Nice.</p>";
@@ -252,6 +459,14 @@
     }
     const health = await api("/api/health");
     healthBox.textContent = JSON.stringify(health, null, 2);
+    try {
+      const st = await api("/api/admin/update-status");
+      updateStatus.textContent = st.ok
+        ? "Self-update ready (docker.sock + project mount)."
+        : st.reason;
+    } catch (err) {
+      updateStatus.textContent = err.message;
+    }
   }
 
   userForm.addEventListener("submit", async (e) => {
@@ -295,6 +510,36 @@
     }
   });
 
+  updateBtn.addEventListener("click", async () => {
+    updateBtn.disabled = true;
+    updateLog.hidden = false;
+    updateLog.textContent = "Updating…";
+    try {
+      const r = await api("/api/admin/update", { method: "POST" });
+      if (r.hostCommand) {
+        updateLog.textContent = `${r.message || ""}\n\n${r.hostCommand}`;
+      } else {
+        updateLog.textContent = r.log || JSON.stringify(r, null, 2);
+      }
+      updateStatus.textContent = r.ok ? "Update finished." : "Update needs host command.";
+    } catch (err) {
+      updateLog.textContent = err.message;
+    } finally {
+      updateBtn.disabled = false;
+    }
+  });
+
+  setupAgainBtn.addEventListener("click", () => {
+    forceSetup = true;
+    setupStep = 0;
+    start();
+  });
+
+  // Direct /update deep link for admins after login
+  if (location.pathname === "/update") {
+    sessionStorage.setItem("openUpdate", "1");
+  }
+
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, "&amp;")
@@ -303,10 +548,10 @@
       .replace(/"/g, "&quot;");
   }
 
-  api("/api/auth/me")
-    .then((user) => {
-      me = user;
-      showMain();
-    })
-    .catch(() => showLogin());
+  start().then(() => {
+    if (sessionStorage.getItem("openUpdate") === "1" && me?.role === "admin") {
+      sessionStorage.removeItem("openUpdate");
+      document.querySelector('.tab[data-tab="admin"]')?.click();
+    }
+  });
 })();

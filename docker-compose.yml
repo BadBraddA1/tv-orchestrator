@@ -11,10 +11,11 @@ services:
       DATA_DIR: /data
       TV_LIBRARY: /media/tv
       DOWNLOADS: /media/downloads
+      HOST_PROJECT_DIR: /host/project
     volumes:
       - ./data:/data
-      # On the R620, mount your real paths, e.g.:
-      # - /mnt/plex/tv:/media/tv
-      # - /mnt/nzbget/completed:/media/downloads
       - ${TV_LIBRARY_HOST:-./media/tv}:/media/tv
       - ${DOWNLOADS_HOST:-./media/downloads}:/media/downloads
+      # Self-update from Admin → Update (git pull + rebuild)
+      - .:/host/project
+      - /var/run/docker.sock:/var/run/docker.sock

@@ -8,6 +8,22 @@
   </head>
   <body>
     <div id="app">
+      <section id="setupView" class="login-view" hidden>
+        <div class="setup-card">
+          <p class="eyebrow">First-run setup</p>
+          <h1 id="setupTitle">Connect your stack</h1>
+          <p class="sub" id="setupTip"></p>
+          <div class="setup-steps" id="setupSteps"></div>
+          <form id="setupForm" class="setup-form"></form>
+          <div class="setup-nav">
+            <button type="button" id="setupBack" class="ghost" hidden>Back</button>
+            <button type="button" id="setupTest" class="ghost" hidden>Test connection</button>
+            <button type="button" id="setupNext">Continue</button>
+          </div>
+          <p id="setupMsg" class="sub" hidden></p>
+        </div>
+      </section>
+
       <section id="loginView" class="login-view">
         <div class="login-card">
           <p class="eyebrow">Household TV</p>
@@ -79,12 +95,25 @@
         </div>
 
         <div id="tab-admin" class="tab-panel" hidden>
-          <form id="userForm" class="user-form">
-            <h2>Add household user</h2>
-            <label>Username <input name="username" required /></label>
-            <label>Password <input name="password" type="password" required /></label>
-            <button type="submit">Create user</button>
-          </form>
+          <div class="admin-grid">
+            <form id="userForm" class="user-form">
+              <h2>Add household user</h2>
+              <label>Username <input name="username" required /></label>
+              <label>Password <input name="password" type="password" required /></label>
+              <button type="submit">Create user</button>
+            </form>
+
+            <div class="user-form">
+              <h2>Push updates</h2>
+              <p class="sub">Pulls latest from GitHub and rebuilds this container on the Proxmox host.</p>
+              <p id="updateStatus" class="meta"></p>
+              <button type="button" id="updateBtn">/update — pull &amp; rebuild</button>
+              <pre id="updateLog" class="health" hidden></pre>
+              <p class="meta">Host fallback:</p>
+              <pre class="health">cd /root/tv-orchestrator && ./update.sh</pre>
+              <button type="button" id="setupAgainBtn" class="ghost">Re-open setup walkthrough</button>
+            </div>
+          </div>
           <div id="userList" class="user-list"></div>
           <div id="healthBox" class="health"></div>
         </div>
