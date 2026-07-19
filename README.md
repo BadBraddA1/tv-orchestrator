@@ -90,6 +90,13 @@ export DOWNLOADS_HOST=/path/to/nzbget/completed
 docker compose --env-file .compose.env up -d --build
 ```
 
+If your library path has a space (`TV Shows`), quote it in `.compose.env`:
+
+```bash
+TV_LIBRARY_HOST="/mnt/plex/TV Shows"
+DOWNLOADS_HOST=/mnt/plex/TransCache
+```
+
 UI: `http://<r620-lan-ip>:3080`
 
 ### NZBGet

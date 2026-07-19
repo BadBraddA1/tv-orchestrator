@@ -30,6 +30,28 @@ run_root() {
   fi
 }
 
+# Quote KEY=value lines that contain spaces (e.g. /mnt/plex/TV Shows).
+fix_compose_env_quotes() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  local tmp key val
+  tmp="$(mktemp)"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      val="${BASH_REMATCH[2]}"
+      if [[ "$val" != \"*\" && "$val" != \'*\' && "$val" == *" "* ]]; then
+        printf '%s="%s"\n' "$key" "$val" >> "$tmp"
+      else
+        printf '%s\n' "$line" >> "$tmp"
+      fi
+    else
+      printf '%s\n' "$line" >> "$tmp"
+    fi
+  done < "$file"
+  mv "$tmp" "$file"
+}
+
 if [[ ! -d "$INSTALL_DIR/.git" ]]; then
   echo "==> Not installed yet — cloning…"
   need_cmd git || { run_root apt-get update && run_root apt-get install -y git; }
@@ -66,16 +88,16 @@ if [[ ! -f .compose.env ]]; then
   DOWNLOADS_HOST="${DOWNLOADS_HOST:-$INSTALL_DIR/media/downloads}"
   mkdir -p "$TV_LIBRARY_HOST" "$DOWNLOADS_HOST" data
   cat > .compose.env <<EOF
-TV_LIBRARY_HOST=${TV_LIBRARY_HOST}
-DOWNLOADS_HOST=${DOWNLOADS_HOST}
+TV_LIBRARY_HOST="${TV_LIBRARY_HOST}"
+DOWNLOADS_HOST="${DOWNLOADS_HOST}"
 EOF
 fi
 
-# Load host mount paths
-set -a
-# shellcheck disable=SC1091
-source .compose.env
-set +a
+# Fix leftover unquoted paths like TV_LIBRARY_HOST=/mnt/plex/TV Shows
+fix_compose_env_quotes .compose.env
+
+# Do NOT `source .compose.env` — unquoted spaces become shell commands.
+# docker compose --env-file handles KEY="value with spaces".
 
 echo "==> Rebuilding container…"
 "${COMPOSE[@]}" \
@@ -91,5 +113,6 @@ PORT="${PORT:-3080}"
 echo ""
 echo "==> Updated."
 echo "  UI:   http://${LAN_IP:-localhost}:${PORT}"
+echo "  Env:  $(tr '\n' ' ' < .compose.env)"
 echo "  Logs: ${COMPOSE[*]} --env-file .compose.env logs -f --tail=80"
 echo ""
