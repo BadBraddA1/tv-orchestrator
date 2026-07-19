@@ -18,6 +18,11 @@
   padding: 0;
 }
 
+/* Author `display` on .login-view must not beat the hidden attribute */
+[hidden] {
+  display: none !important;
+}
+
 body {
   min-height: 100vh;
   font-family: var(--font);

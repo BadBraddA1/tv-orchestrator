@@ -24,6 +24,8 @@ First open of the site runs a **setup walkthrough**:
 1. **Create admin login** (username + password) — you stay signed in for the rest
 2. NZBGet, NZBGeek, NZB Finder, Plex token, optional push
 
+If you only see an empty **“Connect your stack”** card with Continue (no fields): that’s a stuck shell — hard-refresh after updating (`Cmd/Ctrl+Shift+R`). The real sign-in form is underneath; CSS previously left the empty setup card visible.
+
 If you see **“Admin required after setup”**, the wizard finished (or got marked complete) without you being signed in. On the login screen:
 
 1. Try **brad** / **changeme** (or whatever you set as `ADMIN_USER` / `ADMIN_PASS` in `.env`)
