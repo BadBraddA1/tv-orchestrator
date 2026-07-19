@@ -53,6 +53,10 @@ import {
   syncSeriesEpisodes,
 } from "./workers/pipeline.js";
 import { scanVideoFiles } from "./services/library.js";
+import {
+  buildLibraryInventory,
+  getLastInventory,
+} from "./services/inventory.js";
 
 const SETUP_KEYS = [
   "nzbget_url",
@@ -593,6 +597,17 @@ async function handleApi(
       userId: auth.user.id,
     });
     sendJson(res, 200, { matched });
+    return true;
+  }
+
+  if (path === "/api/library/inventory" && method === "POST") {
+    const report = await buildLibraryInventory();
+    sendJson(res, 200, report);
+    return true;
+  }
+
+  if (path === "/api/library/inventory" && method === "GET") {
+    sendJson(res, 200, getLastInventory());
     return true;
   }
 

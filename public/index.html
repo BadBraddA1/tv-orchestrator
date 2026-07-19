@@ -80,9 +80,11 @@
 
         <div id="tab-library" class="tab-panel" hidden>
           <div class="toolbar">
-            <button type="button" id="scanBtn">Scan disk library</button>
+            <button type="button" id="inventoryBtn">Build show inventory</button>
+            <button type="button" id="scanBtn" class="ghost">Rescan matched files</button>
             <button type="button" id="monitorBtn" class="admin-only" hidden>Run monitor now</button>
           </div>
+          <p id="inventorySummary" class="sub"></p>
           <div id="libraryList" class="series-list"></div>
         </div>
 
@@ -124,6 +126,6 @@
         </div>
       </section>
     </div>
-    <script src="/js/app.js?v=85bb6f0"></script>
+    <script src="/js/app.js?v=inventory1"></script>
   </body>
 </html>

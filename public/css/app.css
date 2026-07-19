@@ -267,6 +267,16 @@ label {
   font-size: 0.8rem;
 }
 
+.missing-eps {
+  margin-top: 0.35rem;
+  line-height: 1.45;
+  color: var(--warn);
+}
+
+#inventorySummary {
+  margin: 0.75rem 0 1rem;
+}
+
 .chip {
   display: inline-block;
   font-size: 0.72rem;

@@ -124,11 +124,20 @@ NTFY_TOPIC=your-topic
 | Tab | Purpose |
 |-----|---------|
 | Search | TVMaze search + Request |
-| Library | Monitored shows + counts |
+| Library | **Full disk inventory** of every show on `/media/tv`, plus missing episodes in seasons you already own |
 | Activity | Live trail of requests/snatches/imports/failures |
 | Requests | Who requested what |
 | Cleanup | Stale unwatched disk usage |
 | Admin | Add users, health check, run monitor |
+
+### Library inventory
+
+1. Open **Library → Build show inventory**
+2. Orca walks every video under the TV mount, groups by show name, matches **TVMaze**, and saves a log
+3. For each show it lists seasons you already have files for and any **aired episodes missing** in those seasons (it does not flag seasons you never started)
+4. Auto-discovered shows are added to the DB as **not monitored**, so this will not start downloading the whole catalog — use **Request** (or enable monitoring later) to grab gaps
+
+Saved inventory is reused when you reopen Library until you run Build again.
 
 ## Workers
 

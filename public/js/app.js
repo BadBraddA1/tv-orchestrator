@@ -10,6 +10,8 @@
   const searchInput = document.getElementById("searchInput");
   const searchResults = document.getElementById("searchResults");
   const libraryList = document.getElementById("libraryList");
+  const inventorySummary = document.getElementById("inventorySummary");
+  const inventoryBtn = document.getElementById("inventoryBtn");
   const activityList = document.getElementById("activityList");
   const requestList = document.getElementById("requestList");
   const staleList = document.getElementById("staleList");
@@ -423,9 +425,58 @@
 
   async function loadLibrary() {
     libraryList.innerHTML = "<p class='sub'>Loading…</p>";
+    let inventory = null;
+    try {
+      inventory = await api("/api/library/inventory");
+    } catch {
+      inventory = null;
+    }
+
+    if (inventory && inventory.shows?.length) {
+      const when = new Date(inventory.scannedAt).toLocaleString();
+      inventorySummary.textContent =
+        `${inventory.showCount} shows · ${inventory.fileCount} files on disk · ` +
+        `${inventory.missingEpisodeCount} missing in seasons you own · scanned ${when}`;
+      libraryList.replaceChildren();
+      for (const s of inventory.shows) {
+        const row = document.createElement("div");
+        row.className = "row inventory-row";
+        const miss = s.missing?.length || 0;
+        const chip = s.unmatched
+          ? `<span class="chip warn">Unmatched</span>`
+          : miss
+            ? `<span class="chip warn">${miss} missing</span>`
+            : `<span class="chip ok">Complete</span>`;
+        const seasons = (s.seasonsOwned || []).join(", ") || "—";
+        let missingHtml = "";
+        if (miss) {
+          const list = s.missing
+            .slice(0, 40)
+            .map(
+              (m) =>
+                `S${String(m.season).padStart(2, "0")}E${String(m.episode).padStart(2, "0")} ${escapeHtml(m.title || "")}`,
+            )
+            .join(" · ");
+          const more = miss > 40 ? ` · +${miss - 40} more` : "";
+          missingHtml = `<p class="meta missing-eps">${list}${more}</p>`;
+        }
+        row.innerHTML = `<div class="row-top">
+            <strong>${escapeHtml(s.title)}</strong>
+            ${chip}
+          </div>
+          <p class="meta">${s.onDisk} on disk · seasons ${escapeHtml(seasons)}${s.year ? ` · ${s.year}` : ""}</p>
+          ${missingHtml}`;
+        libraryList.appendChild(row);
+      }
+      return;
+    }
+
+    inventorySummary.textContent =
+      "No inventory yet. Click “Build show inventory” to catalog everything on /media/tv and find missing episodes.";
     const series = await api("/api/series");
     if (!series.length) {
-      libraryList.innerHTML = "<p class='sub'>No monitored shows yet. Search and request one.</p>";
+      libraryList.innerHTML =
+        "<p class='sub'>No shows logged yet. Build inventory (all of disk) or request a show.</p>";
       return;
     }
     libraryList.replaceChildren();
@@ -546,11 +597,28 @@
     loadAdmin();
   });
 
+  inventoryBtn.addEventListener("click", async () => {
+    inventoryBtn.disabled = true;
+    inventorySummary.textContent =
+      "Scanning disk and matching TVMaze — large libraries take a few minutes…";
+    libraryList.innerHTML = "<p class='sub'>Working…</p>";
+    try {
+      await api("/api/library/inventory", { method: "POST" });
+      await loadLibrary();
+      loadActivity();
+    } catch (err) {
+      inventorySummary.textContent = err.message;
+      alert(err.message);
+    } finally {
+      inventoryBtn.disabled = false;
+    }
+  });
+
   scanBtn.addEventListener("click", async () => {
     scanBtn.disabled = true;
     try {
       const r = await api("/api/library/scan", { method: "POST" });
-      alert(`Matched ${r.matched} episode files`);
+      alert(`Matched ${r.matched} episode files to requested shows`);
       loadLibrary();
     } catch (err) {
       alert(err.message);
