@@ -1,0 +1,20 @@
+services:
+  tv-orchestrator:
+    build: .
+    container_name: tv-orchestrator
+    restart: unless-stopped
+    ports:
+      - "3080:3080"
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /data
+      TV_LIBRARY: /media/tv
+      DOWNLOADS: /media/downloads
+    volumes:
+      - ./data:/data
+      # On the R620, mount your real paths, e.g.:
+      # - /mnt/plex/tv:/media/tv
+      # - /mnt/nzbget/completed:/media/downloads
+      - ${TV_LIBRARY_HOST:-./media/tv}:/media/tv
+      - ${DOWNLOADS_HOST:-./media/downloads}:/media/downloads
