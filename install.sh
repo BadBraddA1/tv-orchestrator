@@ -4,10 +4,9 @@
 # Usage (on the Proxmox host or a Docker-capable CT/VM):
 #   curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh | bash
 #
-# Or from a clone:
-#   ./install.sh
+# Works as root (Proxmox) or as a normal user with sudo.
 #
-# Optional env overrides before/with the pipe:
+# Optional env overrides:
 #   INSTALL_DIR=/opt/tv-orchestrator
 #   TV_LIBRARY_HOST=/mnt/plex/tv
 #   DOWNLOADS_HOST=/mnt/nzbget/completed
@@ -28,50 +27,68 @@ PORT_DEFAULT="${PORT:-3080}"
 
 echo "==> TV Orchestrator — Proxmox / Docker install"
 echo "    Target: $INSTALL_DIR"
+echo "    User:   $(id -un) (uid=$(id -u))"
 
 need_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+# Prefer no sudo on Proxmox (root); use sudo only when not root.
+run_root() {
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+  elif need_cmd sudo; then
+    sudo "$@"
+  else
+    echo "ERROR: need root or sudo to run: $*" >&2
+    exit 1
+  fi
+}
 
 # --- packages ----------------------------------------------------------------
 if ! need_cmd curl || ! need_cmd git; then
   echo "==> Installing curl/git…"
-  sudo apt-get update
-  sudo apt-get install -y curl git ca-certificates
+  run_root apt-get update
+  run_root apt-get install -y curl git ca-certificates
 fi
 
 # --- Docker ------------------------------------------------------------------
 if ! need_cmd docker; then
   echo "==> Installing Docker…"
-  curl -fsSL https://get.docker.com | sudo sh
-  if command -v systemctl >/dev/null 2>&1; then
-    sudo systemctl enable --now docker || true
-  fi
-  # Allow current user to run docker without sudo when possible
-  if id -nG "$USER" 2>/dev/null | grep -qw docker; then
-    true
+  # get.docker.com already elevates when needed; as root just pipe to sh
+  if [[ "$(id -u)" -eq 0 ]]; then
+    curl -fsSL https://get.docker.com | sh
   else
-    sudo usermod -aG docker "$USER" || true
-    echo "    Note: you may need to log out/in (or use sudo) for docker group."
+    curl -fsSL https://get.docker.com | run_root sh
+  fi
+  if need_cmd systemctl; then
+    run_root systemctl enable --now docker || true
+  fi
+  if [[ "$(id -u)" -ne 0 ]]; then
+    run_root usermod -aG docker "$USER" || true
+    echo "    Note: log out/in may be needed for docker group."
   fi
 fi
 
 DOCKER=(docker)
 if ! docker info >/dev/null 2>&1; then
+  if [[ "$(id -u)" -eq 0 ]]; then
+    echo "ERROR: docker installed but daemon not responding" >&2
+    exit 1
+  fi
   DOCKER=(sudo docker)
 fi
 
-if ${DOCKER[@]} compose version >/dev/null 2>&1; then
-  COMPOSE=(${DOCKER[@]} compose)
-elif need_cmd docker-compose; then
+if "${DOCKER[@]}" compose version >/dev/null 2>&1; then
+  COMPOSE=("${DOCKER[@]}" compose)
+elif need_cmd docker-compose && docker-compose version >/dev/null 2>&1; then
   COMPOSE=(docker-compose)
-  if ! docker-compose version >/dev/null 2>&1; then
-    COMPOSE=(sudo docker-compose)
-  fi
+elif need_cmd docker-compose; then
+  COMPOSE=(sudo docker-compose)
 else
   echo "==> Installing Docker Compose plugin…"
-  sudo apt-get update
-  sudo apt-get install -y docker-compose-plugin || true
-  if ${DOCKER[@]} compose version >/dev/null 2>&1; then
-    COMPOSE=(${DOCKER[@]} compose)
+  run_root apt-get update
+  run_root apt-get install -y docker-compose-plugin || true
+  if "${DOCKER[@]}" compose version >/dev/null 2>&1; then
+    COMPOSE=("${DOCKER[@]}" compose)
   else
     echo "ERROR: docker compose not available" >&2
     exit 1
@@ -104,7 +121,6 @@ set_env() {
   local value="$2"
   [[ -z "$value" ]] && return 0
   if grep -q "^${key}=" .env; then
-    # Escape sed specials in value lightly
     local esc
     esc=$(printf '%s' "$value" | sed -e 's/[\/&]/\\&/g')
     sed -i "s|^${key}=.*|${key}=${esc}|" .env
@@ -130,42 +146,37 @@ set_env PORT "$PORT_DEFAULT"
 [[ -n "${NTFY_TOPIC:-}" ]] && set_env NTFY_TOPIC "$NTFY_TOPIC"
 [[ -n "${SESSION_SECRET:-}" ]] && set_env SESSION_SECRET "$SESSION_SECRET"
 
-# Random session secret if still default
 if grep -q '^SESSION_SECRET=change-this-to-a-long-random-string$' .env; then
   set_env SESSION_SECRET "$(head -c 48 /dev/urandom | base64 | tr -d '\n+/=' | head -c 48)"
 fi
 
-# Host mount paths for compose
 TV_LIBRARY_HOST="${TV_LIBRARY_HOST:-$INSTALL_DIR/media/tv}"
 DOWNLOADS_HOST="${DOWNLOADS_HOST:-$INSTALL_DIR/media/downloads}"
 mkdir -p "$TV_LIBRARY_HOST" "$DOWNLOADS_HOST" "$INSTALL_DIR/data"
 
-# Persist compose host paths next to project for restarts
 cat > .compose.env <<EOF
 TV_LIBRARY_HOST=${TV_LIBRARY_HOST}
 DOWNLOADS_HOST=${DOWNLOADS_HOST}
 EOF
 
-# --- build & run -------------------------------------------------------------
 echo "==> Building and starting container…"
 export TV_LIBRARY_HOST DOWNLOADS_HOST
-${COMPOSE[@]} --env-file .compose.env up -d --build
+"${COMPOSE[@]}" --env-file .compose.env up -d --build
 
-# Detect LAN IP for hint
 LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
 [[ -z "$LAN_IP" ]] && LAN_IP="YOUR-R620-IP"
 
 echo ""
 echo "==> Install complete."
 echo ""
-echo "  UI:      http://${LAN_IP}:${PORT_DEFAULT}"
-echo "  Dir:     ${INSTALL_DIR}"
-echo "  Library: ${TV_LIBRARY_HOST}  →  /media/tv"
+echo "  UI:        http://${LAN_IP}:${PORT_DEFAULT}"
+echo "  Dir:       ${INSTALL_DIR}"
+echo "  Library:   ${TV_LIBRARY_HOST}  →  /media/tv"
 echo "  Downloads: ${DOWNLOADS_HOST}  →  /media/downloads"
 echo ""
-echo "  Login:   ADMIN_USER / ADMIN_PASS from ${INSTALL_DIR}/.env"
-echo "  Logs:    ${COMPOSE[*]} -f ${INSTALL_DIR}/docker-compose.yml logs -f"
+echo "  Login:     ADMIN_USER / ADMIN_PASS from ${INSTALL_DIR}/.env"
+echo "  Logs:      cd ${INSTALL_DIR} && ${COMPOSE[*]} --env-file .compose.env logs -f"
 echo ""
-echo "Next: edit ${INSTALL_DIR}/.env with NZBGet + indexer keys, then:"
+echo "Next: put NZBGet + indexer keys in ${INSTALL_DIR}/.env, then:"
 echo "  cd ${INSTALL_DIR} && ${COMPOSE[*]} --env-file .compose.env up -d"
 echo ""
