@@ -11,6 +11,31 @@ Overseerr-style **household TV request portal** + grab/import brain for your **D
 
 No Sonarr / Overseerr / Prowlarr required for this TV flow.
 
+## Install on Proxmox (one command)
+
+On the R620 Proxmox host (or a Docker CT/VM):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh | bash
+```
+
+That installs Docker if needed, clones to `~/tv-orchestrator`, builds the container, and starts it on port **3080**.
+
+With your real paths / keys:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh | \
+  TV_LIBRARY_HOST=/mnt/plex/tv \
+  DOWNLOADS_HOST=/mnt/nzbget/completed \
+  NZBGET_URL=http://127.0.0.1:6789 \
+  NZBGEEK_API_KEY=your_key \
+  NZBFINDER_API_KEY=your_key \
+  ADMIN_PASS='pick-a-password' \
+  bash
+```
+
+Then open `http://<r620-lan-ip>:3080` and sign in.
+
 ## Quick start (Mac / test)
 
 ```bash
@@ -23,18 +48,17 @@ npm run dev
 # login: ADMIN_USER / ADMIN_PASS from .env
 ```
 
-## Proxmox (R620) deploy
+## Proxmox (manual)
 
-1. Create a VM or LXC with Docker (or install Docker in a Debian CT).
-2. Clone this repo onto the host/CT.
-3. Mount your Plex TV library and NZBGet completed folder into the container paths.
-4. Copy `.env.example` → `.env` and fill keys.
-5. Run:
+If you already cloned:
 
 ```bash
+cd ~/tv-orchestrator
+./install.sh
+# or:
 export TV_LIBRARY_HOST=/path/to/plex/tv
 export DOWNLOADS_HOST=/path/to/nzbget/completed
-docker compose up -d --build
+docker compose --env-file .compose.env up -d --build
 ```
 
 UI: `http://<r620-lan-ip>:3080`
