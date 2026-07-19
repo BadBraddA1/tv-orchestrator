@@ -9,7 +9,7 @@ import {
   upsertEpisode,
   listSeries,
 } from "../db/repo.js";
-import { searchEpisode, pickBestRelease } from "../services/newznab.js";
+import { searchEpisode, rankReleases } from "../services/newznab.js";
 import * as nzbget from "../services/nzbget.js";
 import { notify } from "../services/notify.js";
 import {
@@ -75,6 +75,7 @@ export async function monitorOnce(): Promise<void> {
   });
 
   for (const ep of wanted.slice(0, 5)) {
+    const label = `${ep.series_title} S${pad(ep.season)}E${pad(ep.episode)}`;
     try {
       const releases = await searchEpisode({
         seriesTitle: ep.series_title,
@@ -82,46 +83,84 @@ export async function monitorOnce(): Promise<void> {
         episode: ep.episode,
         tvmazeId: ep.tvmaze_id,
       });
-      const best = pickBestRelease(releases, ep.quality_profile || config.qualityProfile);
-      if (!best) {
+      const ranked = rankReleases(
+        releases,
+        ep.quality_profile || config.qualityProfile,
+      );
+      if (!ranked.length) {
         updateEpisode(ep.id, {
           status: "failed",
           error: "No NZB found",
         });
-        const msg = `No NZB for ${ep.series_title} S${pad(ep.season)}E${pad(ep.episode)}`;
+        const msg = `No NZB for ${label}`;
         addActivity({ kind: "failed", message: msg, seriesId: ep.series_id, episodeId: ep.id });
         await notify("TV grab failed", msg);
         continue;
       }
 
-      const nzbId = await nzbget.appendUrl(
-        best.link,
-        `${ep.series_title}.S${pad(ep.season)}E${pad(ep.episode)}`,
-      );
+      let nzbId: number | null = null;
+      let chosen = ranked[0]!;
+      const attemptErrors: string[] = [];
+      for (const release of ranked.slice(0, 5)) {
+        try {
+          nzbId = await nzbget.appendUrl(
+            release.link,
+            `${ep.series_title}.S${pad(ep.season)}E${pad(ep.episode)}`,
+            release.indexer,
+          );
+          chosen = release;
+          break;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          attemptErrors.push(`${release.indexer}: ${msg}`);
+          console.warn(`[grab] ${label} try failed`, msg);
+        }
+      }
+
+      if (nzbId == null) {
+        const detail = attemptErrors.slice(0, 3).join(" | ") || "all attempts failed";
+        updateEpisode(ep.id, {
+          status: "failed",
+          error: detail.slice(0, 500),
+        });
+        const msg = `Grab failed ${label}: ${detail}`;
+        addActivity({
+          kind: "failed",
+          message: msg.slice(0, 500),
+          seriesId: ep.series_id,
+          episodeId: ep.id,
+          meta: { attempts: attemptErrors },
+        });
+        await notify("TV grab failed", msg.slice(0, 900));
+        continue;
+      }
+
       updateEpisode(ep.id, {
         status: "snatched",
         nzbget_id: nzbId,
-        release_title: best.title,
+        release_title: chosen.title,
         error: null,
       });
-      const msg = `Snatched ${ep.series_title} S${pad(ep.season)}E${pad(ep.episode)} via ${best.indexer}`;
+      const msg = `Snatched ${label} via ${chosen.indexer}`;
       addActivity({
         kind: "snatched",
         message: msg,
         seriesId: ep.series_id,
         episodeId: ep.id,
-        meta: { release: best.title },
+        meta: { release: chosen.title },
       });
       await notify("TV snatched", msg);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       updateEpisode(ep.id, { status: "failed", error });
+      const msg = `Grab error ${label}: ${error}`;
       addActivity({
         kind: "failed",
-        message: `Grab error ${ep.series_title} S${pad(ep.season)}E${pad(ep.episode)}: ${error}`,
+        message: msg,
         seriesId: ep.series_id,
         episodeId: ep.id,
       });
+      await notify("TV grab failed", msg.slice(0, 900));
     }
   }
 }
@@ -153,10 +192,10 @@ export async function pollDownloadsOnce(): Promise<void> {
     if (!hist) continue;
     if (/success/i.test(hist.Status) || /complete/i.test(hist.Status)) {
       const dest = hist.FinalDir || hist.DestDir;
+      const series = getSeriesById(ep.series_id);
       try {
         const imported = await importCompleted(ep.id, dest);
         if (imported) {
-          const series = getSeriesById(ep.series_id);
           const msg = `Imported ${series?.title || "Show"} S${pad(ep.season)}E${pad(ep.episode)}`;
           addActivity({
             kind: "imported",
@@ -176,12 +215,20 @@ export async function pollDownloadsOnce(): Promise<void> {
           seriesId: ep.series_id,
           episodeId: ep.id,
         });
+        await notify(
+          "TV import failed",
+          `Import failed ${series?.title || "Show"} S${pad(ep.season)}E${pad(ep.episode)}: ${error}`,
+        );
       }
     } else if (/fail|delete|unpack/i.test(hist.Status) && !/success/i.test(hist.Status)) {
       updateEpisode(ep.id, {
         status: "failed",
         error: `NZBGet status: ${hist.Status}`,
       });
+      await notify(
+        "TV download failed",
+        `${getSeriesById(ep.series_id)?.title || "Show"} S${pad(ep.season)}E${pad(ep.episode)}: NZBGet ${hist.Status}`,
+      );
     }
   }
 }

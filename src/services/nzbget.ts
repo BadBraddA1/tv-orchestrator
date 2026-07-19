@@ -30,31 +30,89 @@ async function nzbgetCall<T>(method: string, params: unknown[] = []): Promise<T>
   return body.result as T;
 }
 
+/** Ensure Newznab download URLs carry the indexer API key (missing key → 400). */
+export function withIndexerApiKey(nzbUrl: string, indexer: string): string {
+  const key =
+    indexer === "NZBGeek"
+      ? config.nzbgeek.apiKey
+      : indexer === "NZBFinder"
+        ? config.nzbfinder.apiKey
+        : "";
+  if (!key) return nzbUrl;
+  try {
+    const u = new URL(nzbUrl);
+    if (!u.searchParams.has("apikey") && !u.searchParams.has("r")) {
+      u.searchParams.set("apikey", key);
+    }
+    return u.toString();
+  } catch {
+    if (/[?&](apikey|r)=/i.test(nzbUrl)) return nzbUrl;
+    return `${nzbUrl}${nzbUrl.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(key)}`;
+  }
+}
+
 export async function appendUrl(
   nzbUrl: string,
   name: string,
+  indexer = "",
 ): Promise<number> {
-  // append(NZBFilename, Content, Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode, PPParameters)
-  // For URL download use append with URL content empty and Filename as URL? Better: use append with download of nzb bytes.
-  const nzbRes = await fetch(nzbUrl);
-  if (!nzbRes.ok) {
-    throw new Error(`Failed to download NZB (${nzbRes.status})`);
+  const authedUrl = withIndexerApiKey(nzbUrl, indexer);
+
+  // Prefer letting NZBGet fetch the NZB URL (supports http/https content).
+  // Fall back to downloading here if NZBGet rejects the URL form.
+  try {
+    return await nzbgetCall<number>("append", [
+      `${name}.nzb`,
+      authedUrl,
+      config.nzbget.category,
+      0,
+      false,
+      false,
+      "",
+      0,
+      "SCORE",
+      false,
+    ]);
+  } catch (urlErr) {
+    const nzbRes = await fetch(authedUrl);
+    if (!nzbRes.ok) {
+      const body = (await nzbRes.text()).slice(0, 180).replace(/\s+/g, " ");
+      const host = (() => {
+        try {
+          return new URL(authedUrl).host;
+        } catch {
+          return "unknown";
+        }
+      })();
+      throw new Error(
+        `Failed to download NZB (${nzbRes.status}) from ${indexer || host}: ${body || nzbRes.statusText}`,
+      );
+    }
+    const buf = Buffer.from(await nzbRes.arrayBuffer());
+    if (buf.length < 50) {
+      throw new Error(
+        `NZB payload too small (${buf.length} bytes) from ${indexer || "indexer"} — check API key`,
+      );
+    }
+    try {
+      return await nzbgetCall<number>("append", [
+        `${name}.nzb`,
+        buf.toString("base64"),
+        config.nzbget.category,
+        0,
+        false,
+        false,
+        "",
+        0,
+        "SCORE",
+        false,
+      ]);
+    } catch (b64Err) {
+      const a = urlErr instanceof Error ? urlErr.message : String(urlErr);
+      const b = b64Err instanceof Error ? b64Err.message : String(b64Err);
+      throw new Error(`NZBGet append failed (URL: ${a}; base64: ${b})`);
+    }
   }
-  const buf = Buffer.from(await nzbRes.arrayBuffer());
-  const b64 = buf.toString("base64");
-  const id = await nzbgetCall<number>("append", [
-    `${name}.nzb`,
-    b64,
-    config.nzbget.category,
-    0,
-    false,
-    false,
-    "",
-    0,
-    "SCORE",
-    false,
-  ]);
-  return id;
 }
 
 export interface NzbgetHistoryItem {

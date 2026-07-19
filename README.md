@@ -6,7 +6,7 @@ Overseerr-style **household TV request portal** + grab/import brain for your **D
 - App finds NZBs on **NZBGeek** + **NZB Finder**
 - Sends downloads to **NZBGet** (keep NZBGet running)
 - Renames/moves into your **Plex TV** folders
-- Live **Activity** + optional **Pushover/ntfy**
+- Live **Activity** + optional **Pushover/ntfy** (failures and snatches both ping your phone)
 - **Cleanup** page for stale unwatched media (via Plex watch history)
 
 No Sonarr / Overseerr / Prowlarr required for this TV flow.
@@ -110,7 +110,7 @@ Paste Newznab API keys:
 
 ### Push notifications
 
-Optional:
+Optional (required if you want phone pings when grabs fail/succeed):
 
 ```bash
 PUSHOVER_USER_KEY=...
@@ -118,6 +118,8 @@ PUSHOVER_APP_TOKEN=...
 # or
 NTFY_TOPIC=your-topic
 ```
+
+Or enter them in the setup walkthrough. **Admin → Send test phone ping** verifies delivery. Activity always logs failures; phone alerts only fire when Pushover/ntfy is configured.
 
 ## What the UI does
 

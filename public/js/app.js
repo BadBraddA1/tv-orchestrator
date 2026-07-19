@@ -22,6 +22,7 @@
   const scanBtn = document.getElementById("scanBtn");
   const monitorBtn = document.getElementById("monitorBtn");
   const updateBtn = document.getElementById("updateBtn");
+  const testNotifyBtn = document.getElementById("testNotifyBtn");
   const updateStatus = document.getElementById("updateStatus");
   const updateLog = document.getElementById("updateLog");
   const setupAgainBtn = document.getElementById("setupAgainBtn");
@@ -637,6 +638,22 @@
       alert(err.message);
     } finally {
       monitorBtn.disabled = false;
+    }
+  });
+
+  testNotifyBtn.addEventListener("click", async () => {
+    testNotifyBtn.disabled = true;
+    try {
+      const r = await api("/api/notify/test", { method: "POST" });
+      alert(
+        r.ok
+          ? `Ping sent via ${r.channels.join(", ")}`
+          : `Ping issue: ${(r.errors || []).join("; ") || r.error || "failed"}`,
+      );
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      testNotifyBtn.disabled = false;
     }
   });
 

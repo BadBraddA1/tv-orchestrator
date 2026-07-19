@@ -39,7 +39,7 @@ import {
   stripHtml,
   yearFromPremiered,
 } from "./services/tvmaze.js";
-import { notify } from "./services/notify.js";
+import { notify, notifyConfigured } from "./services/notify.js";
 import { ping as nzbgetPing } from "./services/nzbget.js";
 import {
   fetchAllEpisodesWithWatch,
@@ -184,11 +184,13 @@ async function handleApi(
 
   if (path === "/api/health") {
     const nzb = await nzbgetPing();
+    const alerts = notifyConfigured();
     sendJson(res, 200, {
       ok: true,
       nzbget: nzb,
       plex: await plexConfigured(),
       setupComplete: isSetupComplete(),
+      notify: alerts,
       indexers: {
         nzbgeek: Boolean(config.nzbgeek.apiKey),
         nzbfinder: Boolean(config.nzbfinder.apiKey),
@@ -608,6 +610,32 @@ async function handleApi(
 
   if (path === "/api/library/inventory" && method === "GET") {
     sendJson(res, 200, getLastInventory());
+    return true;
+  }
+
+  if (path === "/api/notify/test" && method === "POST") {
+    if (auth.user.role !== "admin") {
+      sendJson(res, 403, { error: "Admin only" });
+      return true;
+    }
+    const configured = notifyConfigured();
+    if (!configured.pushover && !configured.ntfy) {
+      sendJson(res, 400, {
+        error:
+          "No phone alerts configured. Re-open setup (Admin → Re-open setup) and add Pushover keys or an ntfy topic.",
+        notify: configured,
+      });
+      return true;
+    }
+    const result = await notify(
+      "TV Orchestrator test",
+      `Test ping from orca at ${new Date().toLocaleString()}`,
+    );
+    sendJson(res, result.errors.length ? 502 : 200, {
+      ok: result.sent,
+      ...result,
+      notify: configured,
+    });
     return true;
   }
 

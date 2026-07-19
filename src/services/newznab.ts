@@ -170,3 +170,13 @@ export function pickBestRelease(
   );
   return ranked[0] ?? null;
 }
+
+/** Ranked release list (best first) for retrying downloads after 400/errors. */
+export function rankReleases(
+  releases: NewznabRelease[],
+  profile: string,
+): NewznabRelease[] {
+  return [...releases].sort(
+    (a, b) => scoreRelease(b, profile) - scoreRelease(a, profile),
+  );
+}
