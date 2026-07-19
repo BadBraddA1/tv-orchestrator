@@ -8,6 +8,7 @@ import { config, reloadConfigFromSettings } from "./config.js";
 import { migrate } from "./db/schema.js";
 import {
   addActivity,
+  countAdmins,
   createRequest,
   createSession,
   createUser,
@@ -21,10 +22,12 @@ import {
   listRequests,
   listSeries,
   listUsers,
+  updateUserPassword,
   upsertSeries,
   type User,
 } from "./db/repo.js";
 import {
+  clearSetupComplete,
   getSettings,
   isSetupComplete,
   markSetupComplete,
@@ -135,11 +138,36 @@ function clearSessionCookie(res: ServerResponse): void {
   );
 }
 
+/** Seed admin from env only if the wizard never created one (legacy installs). */
 async function ensureAdmin(): Promise<void> {
   if (listUsers().length > 0) return;
+  if (!isSetupComplete()) {
+    console.log("[boot] No users yet — first-run wizard will create the admin account");
+    return;
+  }
   const hash = await bcrypt.hash(config.adminPass, 10);
   createUser(config.adminUser, hash, "admin");
-  console.log(`[boot] Created admin user '${config.adminUser}'`);
+  console.log(`[boot] Created admin user '${config.adminUser}' from env (legacy)`);
+}
+
+/** Create or update the admin password during first-run (or when re-opening setup). */
+async function upsertAdminAccount(
+  username: string,
+  password: string,
+): Promise<User> {
+  const hash = await bcrypt.hash(password, 10);
+  const byName = getUserByUsername(username);
+  if (byName) {
+    if (byName.role !== "admin") {
+      throw new Error("That username is taken by a non-admin account");
+    }
+    updateUserPassword(byName.id, hash);
+    return byName;
+  }
+  if (countAdmins() === 0) {
+    return createUser(username, hash, "admin");
+  }
+  return createUser(username, hash, "admin");
 }
 
 async function handleApi(
@@ -167,8 +195,12 @@ async function handleApi(
 
   if (path === "/api/setup/status" && method === "GET") {
     const saved = getSettings([...SETUP_KEYS]);
+    const users = listUsers();
+    const admin = users.find((u) => u.role === "admin");
     sendJson(res, 200, {
       complete: isSetupComplete(),
+      hasAdmin: Boolean(admin),
+      adminUsername: admin?.username || config.adminUser,
       values: {
         nzbget_url: saved.nzbget_url || config.nzbget.url,
         nzbget_user: saved.nzbget_user || config.nzbget.user,
@@ -184,8 +216,11 @@ async function handleApi(
         pushover_app_token: saved.pushover_app_token || config.pushover.appToken,
         ntfy_topic: saved.ntfy_topic || config.ntfy.topic,
         quality_profile: saved.quality_profile || config.qualityProfile,
+        admin_user: admin?.username || config.adminUser,
       },
       tips: {
+        admin:
+          "Pick the password you’ll use to sign in. This is required before the rest of setup can finish.",
         nzbget: "Open NZBGet → Settings → Security for username/password. Create category tv-orch under Categories.",
         nzbgeek: "NZBGeek → API → copy your Newznab API key (api.nzbgeek.info).",
         nzbfinder: "NZB Finder account → API / Newznab key.",
@@ -196,11 +231,41 @@ async function handleApi(
     return true;
   }
 
+  if (path === "/api/setup/unlock" && method === "POST") {
+    // Re-open first-run if you hit "Admin required after setup" without knowing you finished.
+    const body = await readJson<{ username?: string; password?: string }>(req);
+    const user = getUserByUsername(body.username || "");
+    if (
+      !user ||
+      user.role !== "admin" ||
+      !(await bcrypt.compare(body.password || "", user.password_hash))
+    ) {
+      sendJson(res, 401, {
+        error:
+          "Need admin username/password to unlock setup. Default env was often brad / changeme if you never set ADMIN_PASS.",
+      });
+      return true;
+    }
+    clearSetupComplete();
+    const token = createSession(user.id);
+    setSessionCookie(res, token);
+    sendJson(res, 200, {
+      ok: true,
+      complete: false,
+      user: { id: user.id, username: user.username, role: user.role },
+    });
+    return true;
+  }
+
   if (path === "/api/setup/save" && method === "POST") {
     const auth = requireUser(req);
     const open = !isSetupComplete();
     if (!open && (!auth || auth.user.role !== "admin")) {
-      sendJson(res, 401, { error: "Admin required after setup" });
+      sendJson(res, 401, {
+        error:
+          "Admin required after setup. Sign in, or unlock setup with your admin password.",
+        code: "SETUP_LOCKED",
+      });
       return true;
     }
     const body = await readJson<Record<string, unknown>>(req);
@@ -210,23 +275,60 @@ async function handleApi(
     }
     setSettings(map);
     reloadConfigFromSettings(getSettings([...SETUP_KEYS]));
+
+    let sessionUser: User | null = auth?.user ?? null;
+    const adminUser =
+      body.admin_user != null ? String(body.admin_user).trim() : "";
+    const adminPass =
+      body.admin_pass != null ? String(body.admin_pass) : "";
+    if (adminUser && adminPass) {
+      if (adminPass.length < 6) {
+        sendJson(res, 400, { error: "Admin password must be at least 6 characters" });
+        return true;
+      }
+      try {
+        sessionUser = await upsertAdminAccount(adminUser, adminPass);
+        const token = createSession(sessionUser.id);
+        setSessionCookie(res, token);
+      } catch (err) {
+        sendJson(res, 400, {
+          error: err instanceof Error ? err.message : "Could not set admin",
+        });
+        return true;
+      }
+    }
+
     if (body.finish === true || body.finish === "true" || body.finish === "1") {
+      if (countAdmins() === 0) {
+        sendJson(res, 400, {
+          error: "Create an admin username/password before finishing setup",
+        });
+        return true;
+      }
       markSetupComplete();
       addActivity({
         kind: "setup",
         message: "Setup walkthrough completed",
-        userId: auth?.user.id,
+        userId: sessionUser?.id,
       });
     }
     const nzb = await nzbgetPing();
     sendJson(res, 200, {
       ok: true,
       complete: isSetupComplete(),
+      user: sessionUser
+        ? {
+            id: sessionUser.id,
+            username: sessionUser.username,
+            role: sessionUser.role,
+          }
+        : null,
       checks: {
         nzbget: nzb,
         nzbgeek: Boolean(config.nzbgeek.apiKey),
         nzbfinder: Boolean(config.nzbfinder.apiKey),
         plex: Boolean(config.plex.token),
+        hasAdmin: countAdmins() > 0,
       },
     });
     return true;

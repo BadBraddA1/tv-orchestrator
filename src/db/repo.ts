@@ -140,6 +140,21 @@ export function createUser(
   return user;
 }
 
+export function updateUserPassword(userId: string, passwordHash: string): void {
+  db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(
+    passwordHash,
+    userId,
+  );
+}
+
+export function countAdmins(): number {
+  return (
+    db.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'admin'`).get() as {
+      n: number;
+    }
+  ).n;
+}
+
 export function createSession(userId: string, days = 30): string {
   const token = nanoid(48);
   const expires = new Date(Date.now() + days * 86400_000).toISOString();

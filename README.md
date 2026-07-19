@@ -19,7 +19,22 @@ On the R620 Proxmox host (or a Docker CT/VM):
 curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh?$(date +%s)" | bash
 ```
 
-First open of the site runs a **setup walkthrough** (NZBGet, NZBGeek, NZB Finder, Plex token, optional push).
+First open of the site runs a **setup walkthrough**:
+
+1. **Create admin login** (username + password) — you stay signed in for the rest
+2. NZBGet, NZBGeek, NZB Finder, Plex token, optional push
+
+If you see **“Admin required after setup”**, the wizard finished (or got marked complete) without you being signed in. On the login screen:
+
+1. Try **brad** / **changeme** (or whatever you set as `ADMIN_USER` / `ADMIN_PASS` in `.env`)
+2. Click **Unlock / restart setup** — that clears the lock and puts you back in the walkthrough
+
+Or on the host:
+
+```bash
+docker exec -it tv-orchestrator sh -c "sqlite3 /data/tv-orchestrator.db \"UPDATE settings SET value='false' WHERE key='setup_complete';\""
+# then refresh the UI
+```
 
 ### Push updates to the box
 

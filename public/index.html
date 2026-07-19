@@ -32,13 +32,18 @@
           <form id="loginForm">
             <label>
               Username
-              <input name="username" autocomplete="username" required />
+              <input name="username" autocomplete="username" required value="brad" />
             </label>
             <label>
               Password
               <input name="password" type="password" autocomplete="current-password" required />
             </label>
             <button type="submit">Sign in</button>
+            <button type="button" id="unlockSetupBtn" class="ghost">Unlock / restart setup</button>
+            <p class="sub" id="unlockSetup" hidden>
+              If setup says “Admin required”, enter admin credentials and click Unlock. Older installs often used
+              <code>brad</code> / <code>changeme</code> unless you set <code>ADMIN_PASS</code>.
+            </p>
             <p id="loginError" class="error" hidden></p>
           </form>
         </div>

@@ -40,6 +40,15 @@
 
   const STEPS = [
     {
+      id: "admin",
+      title: "Create your admin login",
+      tipKey: "admin",
+      fields: [
+        { key: "admin_user", label: "Admin username", placeholder: "brad" },
+        { key: "admin_pass", label: "Admin password", type: "password" },
+      ],
+    },
+    {
       id: "nzbget",
       title: "NZBGet on the R620",
       tipKey: "nzbget",
@@ -240,14 +249,27 @@
     setupMsg.hidden = false;
     setupMsg.textContent = "Saving…";
     try {
+      if (step.id === "admin") {
+        const user = (setupValues.admin_user || "").trim();
+        const pass = setupValues.admin_pass || "";
+        if (!user || pass.length < 6) {
+          setupMsg.textContent = "Pick a username and a password (6+ characters).";
+          return;
+        }
+      }
       const payload = { ...setupValues };
+      if (step.id !== "admin") {
+        delete payload.admin_user;
+        delete payload.admin_pass;
+      }
       if (step.finish) payload.finish = true;
       const r = await api("/api/setup/save", {
         method: "POST",
         body: JSON.stringify(payload),
       });
+      if (r.user) me = r.user;
       if (step.finish) {
-        setupMsg.textContent = "Setup complete. Sign in to continue.";
+        setupMsg.textContent = "Setup complete.";
         if (me) showMain();
         else showLogin();
         return;
@@ -255,14 +277,26 @@
       setupStep += 1;
       renderSetupStep();
       setupMsg.hidden = true;
-      if (r.checks) {
-        // keep silent on intermediate saves
-      }
     } catch (err) {
-      setupMsg.textContent = err.message;
+      const msg = err.message || String(err);
+      setupMsg.textContent = msg;
+      if (msg.includes("Admin required") || msg.includes("SETUP_LOCKED")) {
+        setupMsg.textContent =
+          msg + " Use Sign in below, or unlock with your admin password (often brad / changeme).";
+        showLoginForUnlock();
+      }
     }
   });
 
+  function showLoginForUnlock() {
+    hideAll();
+    loginView.hidden = false;
+    loginError.hidden = false;
+    loginError.textContent =
+      "Setup was locked. Sign in with your admin account, or use Unlock setup below with brad / changeme if you never set a password.";
+    const unlock = document.getElementById("unlockSetup");
+    if (unlock) unlock.hidden = false;
+  }
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
@@ -292,14 +326,42 @@
         }),
       });
       const status = await api("/api/setup/status");
-      if (!status.complete) showSetup();
-      else showMain();
+      if (!status.complete) {
+        setupStep = 0;
+        showSetup();
+      } else showMain();
     } catch (err) {
       loginError.textContent = err.message;
       loginError.hidden = false;
     }
   });
 
+  const unlockSetupBtn = document.getElementById("unlockSetupBtn");
+  if (unlockSetupBtn) {
+    unlockSetupBtn.addEventListener("click", async () => {
+      loginError.hidden = true;
+      const fd = new FormData(loginForm);
+      try {
+        const r = await api("/api/setup/unlock", {
+          method: "POST",
+          body: JSON.stringify({
+            username: fd.get("username"),
+            password: fd.get("password"),
+          }),
+        });
+        me = r.user;
+        forceSetup = true;
+        setupStep = 0;
+        const status = await api("/api/setup/status");
+        setupValues = { ...status.values };
+        setupTips = status.tips || {};
+        showSetup();
+      } catch (err) {
+        loginError.textContent = err.message;
+        loginError.hidden = false;
+      }
+    });
+  }
   logoutBtn.addEventListener("click", async () => {
     await api("/api/auth/logout", { method: "POST" });
     showLogin();

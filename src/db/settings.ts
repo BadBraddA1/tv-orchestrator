@@ -48,3 +48,7 @@ export function isSetupComplete(): boolean {
 export function markSetupComplete(): void {
   setSetting("setup_complete", "true");
 }
+
+export function clearSetupComplete(): void {
+  setSetting("setup_complete", "false");
+}
