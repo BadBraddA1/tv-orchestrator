@@ -70,6 +70,10 @@ import {
   syncSeriesEpisodes,
 } from "./workers/pipeline.js";
 import {
+  sweepDownloads,
+  sweepDownloadsOnce,
+} from "./services/sweepDownloads.js";
+import {
   searchMovies,
   getMovie,
   tmdbPosterUrl,
@@ -952,6 +956,19 @@ async function handleApi(
     return true;
   }
 
+  if (path === "/api/library/import-downloads" && method === "POST") {
+    if (auth.user.role !== "admin") {
+      sendJson(res, 403, { error: "Admin only" });
+      return true;
+    }
+    const body = await readJson<{ limit?: number }>(req).catch(() => ({} as { limit?: number }));
+    const limit =
+      typeof body.limit === "number" && body.limit > 0 ? Math.min(500, body.limit) : 0;
+    const result = await sweepDownloads(limit);
+    sendJson(res, 200, result);
+    return true;
+  }
+
   if (path === "/api/library/inventory" && method === "POST") {
     const report = await buildLibraryInventory();
     sendJson(res, 200, report);
@@ -1225,6 +1242,7 @@ export async function startServer(): Promise<void> {
   setInterval(() => {
     void pollDownloadsOnce().catch((e) => console.warn("[import]", e));
     void pollMovieDownloadsOnce().catch((e) => console.warn("[movie-import]", e));
+    void sweepDownloadsOnce(25).catch((e) => console.warn("[sweep]", e));
   }, config.importIntervalMs);
 
   setInterval(() => {

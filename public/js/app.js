@@ -54,6 +54,8 @@
   const connectionsList = document.getElementById("connectionsList");
   const scanBtn = document.getElementById("scanBtn");
   const monitorBtn = document.getElementById("monitorBtn");
+  const importDownloadsBtn = document.getElementById("importDownloadsBtn");
+  const importDownloadsBtn2 = document.getElementById("importDownloadsBtn2");
   const updateBtn = document.getElementById("updateBtn");
   const testNotifyBtn = document.getElementById("testNotifyBtn");
   const updateStatus = document.getElementById("updateStatus");
@@ -1700,6 +1702,40 @@
       scanBtn.disabled = false;
     }
   });
+
+  async function runImportDownloads(btn) {
+    if (
+      !confirm(
+        "Scan NZBGet completed folder and move finished videos into Plex TV Shows / Movies?\n\nSafe to run — skips samples and files already in the library.",
+      )
+    ) {
+      return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+      const r = await api("/api/library/import-downloads", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      const errN = (r.errors && r.errors.length) || 0;
+      const msg =
+        `Moved ${r.movedTv} TV + ${r.movedMovies} movies` +
+        ` · scanned ${r.scanned} · skipped ${r.skipped}` +
+        (errN ? ` · ${errN} errors` : "");
+      if (inventorySummary) inventorySummary.textContent = msg;
+      if (downloadsSummary) downloadsSummary.textContent = msg;
+      alert(msg + (errN ? `\n\n${r.errors.slice(0, 5).join("\n")}` : ""));
+      loadActivity();
+      loadLibrary();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  importDownloadsBtn?.addEventListener("click", () => runImportDownloads(importDownloadsBtn));
+  importDownloadsBtn2?.addEventListener("click", () => runImportDownloads(importDownloadsBtn2));
 
   monitorBtn.addEventListener("click", async () => {
     monitorBtn.disabled = true;

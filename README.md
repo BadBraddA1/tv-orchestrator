@@ -98,6 +98,8 @@ Create categories `tv-orch` / `movie-orch` (or match `NZBGET_*_CATEGORY`). **Com
 
 If NZBGet reports paths like `/downloads/tv-orch/...` but Orca only sees `/media/downloads/...`, set **NZBGet path prefix** in Admin → Connections (or `NZBGET_PATH_PREFIX=/downloads`). Without a working mount + mapping, Activity stays on “Looking for finished file…” and retries used to re-grab → **DELETED/DUPE** dumps — that re-grab on import miss is fixed; still fix the mount so imports succeed.
 
+**Stuck backlog on the completed drive:** Library → **Import stuck downloads** (or Downloads tab) walks `/media/downloads`, moves finished TV/movies into Plex homes, and skips samples. The import ticker also drains ~25 files per cycle automatically after `./update.sh`.
+
 Orca talks to NZBGet over JSON-RPC. If Activity shows `Invalid parameter (Parameters)`, update orca (this is fixed) — it was NZBGet’s picky JSON parser + wrong append args, not a bad NZB.
 
 ### Indexers
