@@ -46,6 +46,7 @@ export type AppConfig = {
   nzbgeek: { url: string; apiKey: string };
   nzbfinder: { url: string; apiKey: string };
   tmdb: { apiKey: string };
+  tautulli: { url: string; apiKey: string };
   plex: { url: string; token: string };
   pushover: { userKey: string; appToken: string };
   ntfy: { topic: string; server: string };
@@ -92,6 +93,10 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
     },
     tmdb: {
       apiKey: settingOrEnv(settings, "tmdb_api_key", "TMDB_API_KEY"),
+    },
+    tautulli: {
+      url: settingOrEnv(settings, "tautulli_url", "TAUTULLI_URL", "").replace(/\/$/, ""),
+      apiKey: settingOrEnv(settings, "tautulli_api_key", "TAUTULLI_API_KEY"),
     },
     plex: {
       url: settingOrEnv(settings, "plex_url", "PLEX_URL", "http://127.0.0.1:32400").replace(/\/$/, ""),

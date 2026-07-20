@@ -308,6 +308,67 @@ label {
   margin-bottom: 1rem;
 }
 
+.usage-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: oklch(0.12 0.02 250 / 0.72);
+  display: grid;
+  place-items: end center;
+  padding: 1rem;
+}
+
+.usage-drawer-inner {
+  width: min(640px, 100%);
+  max-height: min(85vh, 800px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 1.15rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.usage-body {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.now-playing {
+  margin-bottom: 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.hopper-list {
+  list-style: none;
+  margin-top: 0.55rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.hopper-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+button.linkish {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  padding: 0;
+  font-weight: 600;
+  text-align: left;
+}
+
+.channel-card {
+  grid-template-columns: 1fr;
+}
+
 .panel-heading {
   font-size: 1.5rem;
   letter-spacing: -0.03em;

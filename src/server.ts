@@ -30,6 +30,10 @@ import {
   listMovies,
   createMovieRequest,
   listMovieRequests,
+  listChannels,
+  listChannelItems,
+  ensureDefaultChannels,
+  countActiveHopperItems,
   type User,
 } from "./db/repo.js";
 import {
@@ -64,8 +68,16 @@ import {
   tmdbPosterUrl,
   yearFromRelease,
   tmdbConfigured,
+  getSimilarMovies,
 } from "./services/tmdb.js";
 import { monitorMoviesOnce, pollMovieDownloadsOnce } from "./workers/movies.js";
+import { maintainChannelsOnce } from "./workers/channels.js";
+import {
+  tautulliConfigured,
+  getActivity,
+  getHistory,
+  getHomeStats,
+} from "./services/tautulli.js";
 import { scanVideoFiles } from "./services/library.js";
 import {
   buildLibraryInventory,
@@ -92,6 +104,8 @@ const SETUP_KEYS = [
   "plex_token",
   "tmdb_api_key",
   "nzbget_movie_category",
+  "tautulli_url",
+  "tautulli_api_key",
   "pushover_user_key",
   "pushover_app_token",
   "ntfy_topic",
@@ -215,6 +229,7 @@ async function handleApi(
       setupComplete: isSetupComplete(),
       notify: alerts,
       tmdb: tmdbConfigured(),
+      tautulli: tautulliConfigured(),
       indexers: {
         nzbgeek: Boolean(config.nzbgeek.apiKey),
         nzbfinder: Boolean(config.nzbfinder.apiKey),
@@ -244,6 +259,8 @@ async function handleApi(
         plex_token: saved.plex_token || config.plex.token,
         tmdb_api_key: saved.tmdb_api_key || config.tmdb.apiKey,
         nzbget_movie_category: saved.nzbget_movie_category || config.nzbget.movieCategory,
+        tautulli_url: saved.tautulli_url || config.tautulli.url,
+        tautulli_api_key: saved.tautulli_api_key || config.tautulli.apiKey,
         pushover_user_key: saved.pushover_user_key || config.pushover.userKey,
         pushover_app_token: saved.pushover_app_token || config.pushover.appToken,
         ntfy_topic: saved.ntfy_topic || config.ntfy.topic,
@@ -258,6 +275,7 @@ async function handleApi(
         nzbfinder: "NZB Finder account → API / Newznab key.",
         plex: "Plex → account → XML or https://support.plex.tv for X-Plex-Token from any plex URL (&X-Plex-Token=).",
         tmdb: "Free API key from themoviedb.org → Settings → API. Used so your household can search/poster movies.",
+        tautulli: "Tautulli Settings → Web Interface → API. Used for Now Playing, click-to-see usage, and channel drop-after-watch.",
         push: "Optional: Pushover user key + app token, or an ntfy topic name.",
       },
     });
@@ -625,6 +643,85 @@ async function handleApi(
     return true;
   }
 
+  if (path === "/api/usage" && method === "GET") {
+    if (!tautulliConfigured()) {
+      sendJson(res, 200, {
+        configured: false,
+        nowPlaying: [],
+        history: [],
+        message: "Add Tautulli URL + API key in setup",
+      });
+      return true;
+    }
+    const q = url.searchParams.get("q")?.trim() || "";
+    try {
+      const [activity, history] = await Promise.all([
+        getActivity(),
+        getHistory({ search: q || undefined, length: q ? 40 : 25 }),
+      ]);
+      sendJson(res, 200, {
+        configured: true,
+        nowPlaying: activity.sessions,
+        streamCount: activity.stream_count,
+        history,
+      });
+    } catch (err) {
+      sendJson(res, 502, {
+        configured: true,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return true;
+  }
+
+  if (path === "/api/recommend" && method === "GET") {
+    const tmdbId = Number(url.searchParams.get("tmdbId") || 0);
+    if (!tmdbId || !tmdbConfigured()) {
+      sendJson(res, 200, []);
+      return true;
+    }
+    try {
+      const hits = await getSimilarMovies(tmdbId);
+      sendJson(
+        res,
+        200,
+        hits.slice(0, 12).map((m) => ({
+          tmdbId: m.id,
+          title: m.title,
+          year: yearFromRelease(m.release_date),
+          poster: tmdbPosterUrl(m.poster_path),
+          overview: m.overview || "",
+        })),
+      );
+    } catch (err) {
+      sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+    }
+    return true;
+  }
+
+  if (path === "/api/channels" && method === "GET") {
+    ensureDefaultChannels();
+    const all = listChannels().map((c) => ({
+      ...c,
+      items: listChannelItems(c.id),
+      active: countActiveHopperItems(c.id),
+    }));
+    sendJson(res, 200, all);
+    return true;
+  }
+
+  if (path === "/api/channels/maintain" && method === "POST") {
+    if (auth.user.role !== "admin") {
+      sendJson(res, 403, { error: "Admin only" });
+      return true;
+    }
+    const result = await maintainChannelsOnce();
+    await monitorMoviesOnce(5);
+    await monitorOnce(8);
+    sendJson(res, 200, result);
+    return true;
+  }
+
   if (path === "/api/series" && method === "GET") {
     const all = listSeries().map((s) => {
       const eps = listEpisodesForSeries(s.id);
@@ -987,6 +1084,14 @@ export async function startServer(): Promise<void> {
     void pollDownloadsOnce().catch((e) => console.warn("[import]", e));
     void pollMovieDownloadsOnce().catch((e) => console.warn("[movie-import]", e));
   }, config.importIntervalMs);
+
+  setInterval(() => {
+    void maintainChannelsOnce().catch((e) => console.warn("[channels]", e));
+  }, Math.max(config.monitorIntervalMs * 2, 300_000));
+  setTimeout(() => {
+    ensureDefaultChannels();
+    void maintainChannelsOnce().catch((e) => console.warn("[channels]", e));
+  }, 45_000);
 
   setInterval(() => {
     void processDueDeletes().catch((e) => console.warn("[stale]", e));

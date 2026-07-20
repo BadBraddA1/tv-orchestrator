@@ -11,6 +11,8 @@ Overseerr-style **household TV + movie request portal** + grab/import brain for 
 
 No Sonarr / Radarr / Overseerr required for this household flow.
 
+See **[docs/CHANNELS.md](docs/CHANNELS.md)** for the Netflix-y plan: Tautulli usage → 24/7 hoppers → recommendations.
+
 ## Install on Proxmox (one command)
 
 On the R620 Proxmox host (or a Docker CT/VM):

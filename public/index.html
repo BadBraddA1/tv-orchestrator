@@ -67,6 +67,7 @@
         <nav class="tabs">
           <button type="button" data-tab="search" class="tab active">TV</button>
           <button type="button" data-tab="movies" class="tab">Movies</button>
+          <button type="button" data-tab="channels" class="tab">Channels</button>
           <button type="button" data-tab="library" class="tab">TV library</button>
           <button type="button" data-tab="activity" class="tab">Activity</button>
           <button type="button" data-tab="requests" class="tab">Requests</button>
@@ -91,6 +92,23 @@
           <div id="movieSearchResults" class="poster-grid"></div>
           <h2 class="section-title">Your movie queue</h2>
           <div id="movieQueue" class="series-list"></div>
+        </div>
+
+        <div id="tab-channels" class="tab-panel" hidden>
+          <div class="cleanup-hero">
+            <div>
+              <p class="eyebrow">24/7 hoppers</p>
+              <h2 class="panel-heading">Channels</h2>
+              <p class="sub">
+                Keep a short stack of fresh titles. When something is watched (via Tautulli), orca drops it and grabs the next.
+              </p>
+            </div>
+            <div class="toolbar admin-only" hidden>
+              <button type="button" id="maintainChannelsBtn">Refill hoppers now</button>
+            </div>
+          </div>
+          <div id="nowPlaying" class="now-playing" hidden></div>
+          <div id="channelsList" class="stale-grid"></div>
         </div>
 
         <div id="tab-library" class="tab-panel" hidden>
@@ -132,6 +150,18 @@
           <div id="staleList" class="stale-list"></div>
         </div>
 
+        <div id="usageDrawer" class="usage-drawer" hidden>
+          <div class="usage-drawer-inner">
+            <div class="row-top">
+              <strong id="usageTitle">Usage</strong>
+              <button type="button" id="usageClose" class="ghost">Close</button>
+            </div>
+            <div id="usageBody" class="usage-body"></div>
+            <h3 class="section-title" id="recsTitle" hidden>If you liked this</h3>
+            <div id="recsGrid" class="poster-grid"></div>
+          </div>
+        </div>
+
         <div id="tab-admin" class="tab-panel" hidden>
           <div class="admin-grid">
             <form id="userForm" class="user-form">
@@ -158,6 +188,6 @@
         </div>
       </section>
     </div>
-    <script src="/js/app.js?v=movies1"></script>
+    <script src="/js/app.js?v=channels1"></script>
   </body>
 </html>

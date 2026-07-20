@@ -124,10 +124,39 @@ export function migrate(): void {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS channels (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      source TEXT NOT NULL,
+      query TEXT,
+      hopper_size INTEGER NOT NULL DEFAULT 8,
+      drop_after_watch INTEGER NOT NULL DEFAULT 1,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS channel_items (
+      id TEXT PRIMARY KEY,
+      channel_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      year INTEGER,
+      tmdb_id INTEGER,
+      tvmaze_id INTEGER,
+      movie_id TEXT,
+      series_id TEXT,
+      status TEXT NOT NULL DEFAULT 'wanted',
+      file_path TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_episodes_status ON episodes(status);
     CREATE INDEX IF NOT EXISTS idx_activity_created ON activity(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_pending_deletes_status ON pending_deletes(status, delete_after);
     CREATE INDEX IF NOT EXISTS idx_movies_status ON movies(status);
+    CREATE INDEX IF NOT EXISTS idx_channel_items_status ON channel_items(channel_id, status);
   `);
 }

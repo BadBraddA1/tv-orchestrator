@@ -41,6 +41,30 @@ export async function searchMovies(query: string): Promise<TmdbMovieHit[]> {
   return data.results || [];
 }
 
+export async function getTrendingMovies(window: "day" | "week" = "week"): Promise<TmdbMovieHit[]> {
+  if (!config.tmdb.apiKey) {
+    throw new Error("TMDB API key not set");
+  }
+  const url = new URL(`${BASE}/trending/movie/${window}`);
+  url.searchParams.set("api_key", config.tmdb.apiKey);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`TMDB trending failed: ${res.status}`);
+  const data = (await res.json()) as { results?: TmdbMovieHit[] };
+  return data.results || [];
+}
+
+export async function getSimilarMovies(tmdbId: number): Promise<TmdbMovieHit[]> {
+  if (!config.tmdb.apiKey) {
+    throw new Error("TMDB API key not set");
+  }
+  const url = new URL(`${BASE}/movie/${tmdbId}/similar`);
+  url.searchParams.set("api_key", config.tmdb.apiKey);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`TMDB similar failed: ${res.status}`);
+  const data = (await res.json()) as { results?: TmdbMovieHit[] };
+  return data.results || [];
+}
+
 export async function getMovie(id: number): Promise<TmdbMovieHit> {
   if (!config.tmdb.apiKey) {
     throw new Error("TMDB API key not set");

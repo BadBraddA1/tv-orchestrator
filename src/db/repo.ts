@@ -748,3 +748,197 @@ export function listMovieRequests(limit = 50): Array<{
     movie_status: string;
   }>;
 }
+
+export type ChannelKind = "movie" | "tv";
+export type ChannelSource = "tmdb_trending" | "tmdb_search" | "tvmaze_search";
+
+export interface ChannelRow {
+  id: string;
+  name: string;
+  kind: ChannelKind;
+  source: ChannelSource;
+  query: string | null;
+  hopper_size: number;
+  drop_after_watch: number;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ChannelItemStatus =
+  | "wanted"
+  | "snatched"
+  | "available"
+  | "watched"
+  | "dropped"
+  | "failed";
+
+export interface ChannelItemRow {
+  id: string;
+  channel_id: string;
+  title: string;
+  year: number | null;
+  tmdb_id: number | null;
+  tvmaze_id: number | null;
+  movie_id: string | null;
+  series_id: string | null;
+  status: ChannelItemStatus;
+  file_path: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listChannels(): ChannelRow[] {
+  return db
+    .prepare(`SELECT * FROM channels ORDER BY name COLLATE NOCASE`)
+    .all() as ChannelRow[];
+}
+
+export function getChannel(id: string): ChannelRow | undefined {
+  return db.prepare(`SELECT * FROM channels WHERE id = ?`).get(id) as ChannelRow | undefined;
+}
+
+export function upsertChannel(input: {
+  name: string;
+  kind: ChannelKind;
+  source: ChannelSource;
+  query?: string | null;
+  hopperSize?: number;
+  dropAfterWatch?: boolean;
+  enabled?: boolean;
+}): ChannelRow {
+  const existing = db
+    .prepare(`SELECT * FROM channels WHERE name = ?`)
+    .get(input.name) as ChannelRow | undefined;
+  const ts = nowIso();
+  if (existing) {
+    db.prepare(
+      `UPDATE channels SET kind=@kind, source=@source, query=@query, hopper_size=@hopper_size,
+       drop_after_watch=@drop_after_watch, enabled=@enabled, updated_at=@updated_at WHERE id=@id`,
+    ).run({
+      id: existing.id,
+      kind: input.kind,
+      source: input.source,
+      query: input.query ?? null,
+      hopper_size: input.hopperSize ?? existing.hopper_size,
+      drop_after_watch: input.dropAfterWatch === false ? 0 : 1,
+      enabled: input.enabled === false ? 0 : 1,
+      updated_at: ts,
+    });
+    return getChannel(existing.id)!;
+  }
+  const row: ChannelRow = {
+    id: nanoid(),
+    name: input.name,
+    kind: input.kind,
+    source: input.source,
+    query: input.query ?? null,
+    hopper_size: input.hopperSize ?? 8,
+    drop_after_watch: input.dropAfterWatch === false ? 0 : 1,
+    enabled: input.enabled === false ? 0 : 1,
+    created_at: ts,
+    updated_at: ts,
+  };
+  db.prepare(
+    `INSERT INTO channels (id, name, kind, source, query, hopper_size, drop_after_watch, enabled, created_at, updated_at)
+     VALUES (@id, @name, @kind, @source, @query, @hopper_size, @drop_after_watch, @enabled, @created_at, @updated_at)`,
+  ).run(row);
+  return row;
+}
+
+export function listChannelItems(channelId: string): ChannelItemRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM channel_items WHERE channel_id = ? ORDER BY created_at DESC`,
+    )
+    .all(channelId) as ChannelItemRow[];
+}
+
+export function countActiveHopperItems(channelId: string): number {
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM channel_items
+         WHERE channel_id = ? AND status IN ('wanted','snatched','available')`,
+      )
+      .get(channelId) as { n: number }
+  ).n;
+}
+
+export function addChannelItem(input: {
+  channelId: string;
+  title: string;
+  year?: number | null;
+  tmdbId?: number | null;
+  tvmazeId?: number | null;
+  movieId?: string | null;
+  seriesId?: string | null;
+  status?: ChannelItemStatus;
+}): ChannelItemRow {
+  const row: ChannelItemRow = {
+    id: nanoid(),
+    channel_id: input.channelId,
+    title: input.title,
+    year: input.year ?? null,
+    tmdb_id: input.tmdbId ?? null,
+    tvmaze_id: input.tvmazeId ?? null,
+    movie_id: input.movieId ?? null,
+    series_id: input.seriesId ?? null,
+    status: input.status ?? "wanted",
+    file_path: null,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  };
+  db.prepare(
+    `INSERT INTO channel_items (id, channel_id, title, year, tmdb_id, tvmaze_id, movie_id, series_id, status, file_path, created_at, updated_at)
+     VALUES (@id, @channel_id, @title, @year, @tmdb_id, @tvmaze_id, @movie_id, @series_id, @status, @file_path, @created_at, @updated_at)`,
+  ).run(row);
+  return row;
+}
+
+export function updateChannelItem(
+  id: string,
+  patch: Partial<{
+    status: ChannelItemStatus;
+    file_path: string | null;
+    movie_id: string | null;
+  }>,
+): void {
+  const cur = db.prepare(`SELECT * FROM channel_items WHERE id = ?`).get(id) as
+    | ChannelItemRow
+    | undefined;
+  if (!cur) return;
+  db.prepare(
+    `UPDATE channel_items SET status=@status, file_path=@file_path, movie_id=@movie_id, updated_at=@updated_at WHERE id=@id`,
+  ).run({
+    id,
+    status: patch.status ?? cur.status,
+    file_path: patch.file_path !== undefined ? patch.file_path : cur.file_path,
+    movie_id: patch.movie_id !== undefined ? patch.movie_id : cur.movie_id,
+    updated_at: nowIso(),
+  });
+}
+
+export function ensureDefaultChannels(): void {
+  const defaults: Array<{
+    name: string;
+    kind: ChannelKind;
+    source: ChannelSource;
+    query?: string;
+  }> = [
+    { name: "Hot Movies", kind: "movie", source: "tmdb_trending" },
+    { name: "Cops 24/7", kind: "tv", source: "tvmaze_search", query: "Cops" },
+    { name: "Drama Night", kind: "movie", source: "tmdb_search", query: "drama" },
+  ];
+  for (const d of defaults) {
+    upsertChannel({
+      name: d.name,
+      kind: d.kind,
+      source: d.source,
+      query: d.query ?? null,
+      hopperSize: 6,
+      dropAfterWatch: true,
+      enabled: true,
+    });
+  }
+}

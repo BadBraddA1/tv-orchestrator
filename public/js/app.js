@@ -13,6 +13,15 @@
   const movieSearchInput = document.getElementById("movieSearchInput");
   const movieSearchResults = document.getElementById("movieSearchResults");
   const movieQueue = document.getElementById("movieQueue");
+  const channelsList = document.getElementById("channelsList");
+  const nowPlaying = document.getElementById("nowPlaying");
+  const maintainChannelsBtn = document.getElementById("maintainChannelsBtn");
+  const usageDrawer = document.getElementById("usageDrawer");
+  const usageTitle = document.getElementById("usageTitle");
+  const usageBody = document.getElementById("usageBody");
+  const usageClose = document.getElementById("usageClose");
+  const recsTitle = document.getElementById("recsTitle");
+  const recsGrid = document.getElementById("recsGrid");
   const libraryList = document.getElementById("libraryList");
   const inventorySummary = document.getElementById("inventorySummary");
   const inventoryBtn = document.getElementById("inventoryBtn");
@@ -116,6 +125,15 @@
           label: "NZBGet movie category",
           placeholder: "movie-orch",
         },
+      ],
+    },
+    {
+      id: "tautulli",
+      title: "Tautulli (usage)",
+      tipKey: "tautulli",
+      fields: [
+        { key: "tautulli_url", label: "Tautulli URL", placeholder: "http://10.0.0.x:8181" },
+        { key: "tautulli_api_key", label: "Tautulli API key", type: "password" },
       ],
     },
     {
@@ -341,6 +359,9 @@
       if (tab === "movies") {
         loadMovieQueue();
       }
+      if (tab === "channels") {
+        loadChannels();
+      }
       if (tab === "activity") loadActivity();
       if (tab === "requests") loadRequests();
       if (tab === "cleanup") loadStale();
@@ -543,12 +564,153 @@
             }
           });
         }
+        const usageBtn = document.createElement("button");
+        usageBtn.className = "ghost";
+        usageBtn.textContent = "Usage";
+        usageBtn.addEventListener("click", () =>
+          openUsage(hit.title, { tmdbId: hit.tmdbId }),
+        );
         body.appendChild(btn);
+        body.appendChild(usageBtn);
         card.append(img, body);
         movieSearchResults.appendChild(card);
       }
     } catch (err) {
       movieSearchResults.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    }
+  });
+
+  async function openUsage(title, opts = {}) {
+    if (!usageDrawer) return;
+    usageDrawer.hidden = false;
+    usageTitle.textContent = title;
+    usageBody.innerHTML = "<p class='sub'>Loading Tautulli…</p>";
+    recsTitle.hidden = true;
+    recsGrid.replaceChildren();
+    try {
+      const data = await api(`/api/usage?q=${encodeURIComponent(title)}`);
+      if (!data.configured) {
+        usageBody.innerHTML =
+          "<p class='sub'>Add Tautulli in setup to see who watched this.</p>";
+      } else if (data.error) {
+        usageBody.innerHTML = `<p class="error">${escapeHtml(data.error)}</p>`;
+      } else {
+        const rows = (data.history || [])
+          .slice(0, 20)
+          .map((h) => {
+            const when = h.date
+              ? new Date(h.date * 1000).toLocaleString()
+              : "—";
+            return `<div class="row"><div class="row-top"><strong>${escapeHtml(h.friendly_name || "user")}</strong><span class="chip">${h.percent_complete ?? 0}%</span></div><p class="meta">${escapeHtml(h.full_title || "")} · ${when} · ${escapeHtml(h.player || "")}</p></div>`;
+          })
+          .join("");
+        usageBody.innerHTML =
+          rows || "<p class='sub'>No plays recorded for this title yet.</p>";
+      }
+      if (opts.tmdbId) {
+        const recs = await api(`/api/recommend?tmdbId=${opts.tmdbId}`);
+        if (Array.isArray(recs) && recs.length) {
+          recsTitle.hidden = false;
+          recsGrid.replaceChildren();
+          for (const hit of recs) {
+            const card = document.createElement("article");
+            card.className = "card";
+            const img = document.createElement("img");
+            img.alt = hit.title;
+            img.src = hit.poster || "";
+            if (!hit.poster) img.style.display = "none";
+            const body = document.createElement("div");
+            body.className = "card-body";
+            body.innerHTML = `<h3>${escapeHtml(hit.title)}</h3><p class="meta">${hit.year || "—"}</p>`;
+            const btn = document.createElement("button");
+            btn.textContent = "Request";
+            btn.addEventListener("click", async () => {
+              btn.disabled = true;
+              try {
+                await api("/api/movies/request", {
+                  method: "POST",
+                  body: JSON.stringify({ tmdbId: hit.tmdbId }),
+                });
+                btn.textContent = "Requested";
+                loadMovieQueue();
+              } catch (err) {
+                btn.disabled = false;
+                alert(err.message);
+              }
+            });
+            body.appendChild(btn);
+            card.append(img, body);
+            recsGrid.appendChild(card);
+          }
+        }
+      }
+    } catch (err) {
+      usageBody.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  usageClose?.addEventListener("click", () => {
+    if (usageDrawer) usageDrawer.hidden = true;
+  });
+
+  async function loadChannels() {
+    if (!channelsList) return;
+    channelsList.innerHTML = "<p class='sub'>Loading…</p>";
+    try {
+      const usage = await api("/api/usage");
+      if (nowPlaying) {
+        if (usage.configured && usage.nowPlaying?.length) {
+          nowPlaying.hidden = false;
+          nowPlaying.innerHTML = `<p class="eyebrow">Now playing</p>${usage.nowPlaying
+            .map(
+              (s) =>
+                `<div class="row"><strong>${escapeHtml(s.friendly_name || s.user || "user")}</strong><p class="meta">${escapeHtml(s.full_title || s.title || "")} · ${s.progress_percent ?? 0}%</p></div>`,
+            )
+            .join("")}`;
+        } else {
+          nowPlaying.hidden = true;
+          nowPlaying.innerHTML = "";
+        }
+      }
+      const channels = await api("/api/channels");
+      channelsList.replaceChildren();
+      for (const ch of channels) {
+        const card = document.createElement("div");
+        card.className = "pending-card channel-card";
+        const items = (ch.items || [])
+          .filter((i) => ["wanted", "snatched", "available"].includes(i.status))
+          .slice(0, 8)
+          .map(
+            (i) =>
+              `<li><button type="button" class="linkish" data-title="${escapeHtml(i.title)}">${escapeHtml(i.title)}${i.year ? ` (${i.year})` : ""}</button> <span class="chip ${i.status === "available" ? "ok" : "warn"}">${escapeHtml(i.status)}</span></li>`,
+          )
+          .join("");
+        card.innerHTML = `<div class="body" style="grid-column:1/-1">
+          <div class="row-top"><strong>${escapeHtml(ch.name)}</strong><span class="chip">${ch.kind} · ${ch.active}/${ch.hopper_size}</span></div>
+          <p class="meta">${escapeHtml(ch.source)}${ch.query ? ` · ${escapeHtml(ch.query)}` : ""} · drop after watch: ${ch.drop_after_watch ? "yes" : "no"}</p>
+          <ul class="hopper-list">${items || "<li class='meta'>Empty — refill to stock</li>"}</ul>
+        </div>`;
+        channelsList.appendChild(card);
+        card.querySelectorAll("[data-title]").forEach((btn) => {
+          btn.addEventListener("click", () => openUsage(btn.getAttribute("data-title")));
+        });
+      }
+    } catch (err) {
+      channelsList.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  maintainChannelsBtn?.addEventListener("click", async () => {
+    maintainChannelsBtn.disabled = true;
+    try {
+      const r = await api("/api/channels/maintain", { method: "POST" });
+      alert(`Filled ${r.filled}, dropped ${r.dropped}`);
+      loadChannels();
+      loadActivity();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      maintainChannelsBtn.disabled = false;
     }
   });
 
