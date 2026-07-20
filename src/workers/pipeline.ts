@@ -1,4 +1,3 @@
-import { mkdir, rename, copyFile, stat, readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
 import {
   listActiveDownloads,
@@ -13,7 +12,6 @@ import { searchEpisode, rankReleases, parseBlockedReleases, addBlockedRelease } 
 import * as nzbget from "../services/nzbget.js";
 import { notify } from "../services/notify.js";
 import {
-  parseEpisodeFilename,
   plexEpisodeName,
   plexSeasonDir,
   scanVideoFiles,
@@ -22,6 +20,11 @@ import { getShowEpisodes } from "../services/tvmaze.js";
 import { refreshTvLibraries } from "../services/plex.js";
 import { config } from "../config.js";
 import { planSoftFail, clearRetryState } from "../services/durableRetry.js";
+import {
+  findEpisodeVideo,
+  moveOrCopyVideo,
+  ensureDir,
+} from "../services/mediaImport.js";
 
 export async function syncSeriesEpisodes(seriesId: string): Promise<void> {
   const series = getSeriesById(seriesId);
@@ -227,7 +230,12 @@ export async function pollDownloadsOnce(): Promise<void> {
     if (/success/i.test(hist.Status) || /complete/i.test(hist.Status)) {
       const dest = hist.FinalDir || hist.DestDir;
       try {
-        const imported = await importCompleted(ep.id, dest);
+        const imported = await importCompleted(ep.id, {
+          finalDir: hist.FinalDir,
+          destDir: hist.DestDir || dest,
+          historyName: hist.Name,
+          releaseTitle: ep.release_title,
+        });
         if (imported) {
           const msg = `Imported ${label}`;
           addActivity({
@@ -242,23 +250,53 @@ export async function pollDownloadsOnce(): Promise<void> {
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
         const attempts = (ep.import_attempts ?? 0) + 1;
-        // File often appears a few minutes after NZBGet SUCCESS — wait before hard fail
-        if (attempts < 6 && /no video found/i.test(error)) {
+        // Keep looking — do NOT re-queue a new NZB (that causes DELETED/DUPE)
+        if (attempts < 40 && /no video found|not found|enoent/i.test(error)) {
           updateEpisode(ep.id, {
             status: "downloading",
             import_attempts: attempts,
-            error: `Waiting for file (${attempts}/6): ${error.slice(0, 200)}`,
+            error: `Looking for finished file (${attempts}/40): ${error.slice(0, 220)}`,
           });
           continue;
         }
         await applyEpisodeSoftFail(
-          { id: ep.id, series_id: ep.series_id, retry_count: ep.retry_count },
+          {
+            id: ep.id,
+            series_id: ep.series_id,
+            retry_count: ep.retry_count,
+            release_title: ep.release_title,
+            blocked_releases: ep.blocked_releases,
+          },
           label,
           `Import: ${error}`,
         );
       }
     } else if (/fail|delete|unpack|dupe/i.test(hist.Status) && !/success/i.test(hist.Status)) {
-      // Prefer a different NZB next — same release/name caused most DELETED/DUPE loops
+      // Before re-grabbing on DUPE: try to import if the file is already in downloads/library
+      if (/dupe/i.test(hist.Status)) {
+        try {
+          const imported = await importCompleted(ep.id, {
+            finalDir: hist.FinalDir,
+            destDir: hist.DestDir,
+            historyName: hist.Name,
+            releaseTitle: ep.release_title,
+          });
+          if (imported) {
+            const msg = `Imported ${label} (after NZBGet DUPE — file already present)`;
+            addActivity({
+              kind: "imported",
+              message: msg,
+              seriesId: ep.series_id,
+              episodeId: ep.id,
+            });
+            await notify("Ready in Plex", msg);
+            await refreshTvLibraries();
+            continue;
+          }
+        } catch {
+          // fall through to soft fail / other release
+        }
+      }
       await applyEpisodeSoftFail(
         {
           id: ep.id,
@@ -275,7 +313,15 @@ export async function pollDownloadsOnce(): Promise<void> {
   }
 }
 
-async function importCompleted(episodeId: string, destDir: string): Promise<boolean> {
+async function importCompleted(
+  episodeId: string,
+  locs: {
+    finalDir?: string | null;
+    destDir?: string | null;
+    historyName?: string | null;
+    releaseTitle?: string | null;
+  },
+): Promise<boolean> {
   const { db } = await import("../db/schema.js");
   const row = db.prepare(`SELECT * FROM episodes WHERE id = ?`).get(episodeId) as {
     id: string;
@@ -288,14 +334,24 @@ async function importCompleted(episodeId: string, destDir: string): Promise<bool
   const series = getSeriesById(row.series_id);
   if (!series) return false;
 
-  const video = await findVideoInDir(destDir)
-    || await findVideoInDir(config.downloads);
+  const { video, searched } = await findEpisodeVideo({
+    finalDir: locs.finalDir,
+    destDir: locs.destDir,
+    historyName: locs.historyName,
+    season: row.season,
+    episode: row.episode,
+    showTitle: series.title,
+    releaseTitle: locs.releaseTitle,
+  });
   if (!video) {
-    throw new Error(`No video found in ${destDir}`);
+    throw new Error(
+      `No video found (looked in ${searched.slice(0, 4).join(" · ") || "downloads"}). ` +
+        `Mount NZBGet completed folder as DOWNLOADS_HOST and set NZBGet path prefix if needed.`,
+    );
   }
 
   const seasonDir = plexSeasonDir(series.title, row.season);
-  await mkdir(seasonDir, { recursive: true });
+  await ensureDir(seasonDir);
   const ext = extname(video);
   const destName = plexEpisodeName(
     series.title,
@@ -306,11 +362,7 @@ async function importCompleted(episodeId: string, destDir: string): Promise<bool
   );
   const destPath = join(seasonDir, destName);
 
-  try {
-    await rename(video, destPath);
-  } catch {
-    await copyFile(video, destPath);
-  }
+  await moveOrCopyVideo(video, destPath);
 
   updateEpisode(row.id, {
     status: "available",
@@ -320,44 +372,6 @@ async function importCompleted(episodeId: string, destDir: string): Promise<bool
     import_attempts: 0,
   });
   return true;
-}
-
-async function findVideoInDir(dir: string): Promise<string | null> {
-  const videos: string[] = [];
-  async function walk(d: string): Promise<void> {
-    let entries;
-    try {
-      entries = await readdir(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const ent of entries) {
-      const full = join(d, ent.name);
-      if (ent.isDirectory()) await walk(full);
-      else if (/\.(mkv|mp4|m4v|avi|ts)$/i.test(ent.name)) videos.push(full);
-    }
-  }
-  await walk(dir);
-  if (!videos.length) return null;
-  // Prefer file matching SxxExx if present
-  for (const v of videos) {
-    if (parseEpisodeFilename(v)) return v;
-  }
-  // Largest file
-  let best = videos[0]!;
-  let bestSize = 0;
-  for (const v of videos) {
-    try {
-      const st = await stat(v);
-      if (st.size > bestSize) {
-        bestSize = st.size;
-        best = v;
-      }
-    } catch {
-      // skip
-    }
-  }
-  return best;
 }
 
 function pad(n: number): string {

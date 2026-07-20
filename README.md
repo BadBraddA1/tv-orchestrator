@@ -92,9 +92,11 @@ DOWNLOADS_HOST=/mnt/plex/TransCache
 
 UI: `http://<r620-lan-ip>:3080`
 
-### NZBGet
+### NZBGet + import (files must move)
 
-Create category `tv-orch` (or match `NZBGET_CATEGORY`) and point completed downloads at the folder you mount as `/media/downloads`.
+Create categories `tv-orch` / `movie-orch` (or match `NZBGET_*_CATEGORY`). **Completed downloads must land in the same folder you mount as `DOWNLOADS_HOST`** → `/media/downloads` inside Orca. After SUCCESS, Orca finds the video, renames it into TV Shows / Movies, then Plex refreshes.
+
+If NZBGet reports paths like `/downloads/tv-orch/...` but Orca only sees `/media/downloads/...`, set **NZBGet path prefix** in Admin → Connections (or `NZBGET_PATH_PREFIX=/downloads`). Without a working mount + mapping, Activity stays on “Looking for finished file…” and retries used to re-grab → **DELETED/DUPE** dumps — that re-grab on import miss is fixed; still fix the mount so imports succeed.
 
 Orca talks to NZBGet over JSON-RPC. If Activity shows `Invalid parameter (Parameters)`, update orca (this is fixed) — it was NZBGet’s picky JSON parser + wrong append args, not a bad NZB.
 

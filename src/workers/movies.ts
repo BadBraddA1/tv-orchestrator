@@ -1,4 +1,3 @@
-import { mkdir, rename, copyFile, stat, readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
 import {
   listWantedMovies,
@@ -7,13 +6,23 @@ import {
   getMovieById,
   addActivity,
 } from "../db/repo.js";
-import { searchMovie, rankReleases, parseBlockedReleases, addBlockedRelease } from "../services/newznab.js";
+import {
+  searchMovie,
+  rankReleases,
+  parseBlockedReleases,
+  addBlockedRelease,
+} from "../services/newznab.js";
 import * as nzbget from "../services/nzbget.js";
 import { notify } from "../services/notify.js";
 import { plexMovieFolder, plexMovieFileName } from "../services/library.js";
 import { refreshMovieLibraries } from "../services/plex.js";
 import { config } from "../config.js";
 import { planSoftFail, clearRetryState } from "../services/durableRetry.js";
+import {
+  findMovieVideo,
+  moveOrCopyVideo,
+  ensureDir,
+} from "../services/mediaImport.js";
 
 export async function monitorMoviesOnce(limit = 3): Promise<void> {
   const wanted = listWantedMovies();
@@ -30,7 +39,11 @@ export async function monitorMoviesOnce(limit = 3): Promise<void> {
         parseBlockedReleases(movie.blocked_releases),
       );
       if (!ranked.length) {
-        await applyMovieSoftFail(movie, label, "No NZB found yet (all releases blocked or empty)");
+        await applyMovieSoftFail(
+          movie,
+          label,
+          "No NZB found yet (all releases blocked or empty)",
+        );
         continue;
       }
 
@@ -151,9 +164,8 @@ export async function pollMovieDownloadsOnce(): Promise<void> {
     if (!hist) continue;
     const label = movie.year ? `${movie.title} (${movie.year})` : movie.title;
     if (/success/i.test(hist.Status) || /complete/i.test(hist.Status)) {
-      const dest = hist.FinalDir || hist.DestDir;
       try {
-        const imported = await importMovieCompleted(movie.id, dest);
+        const imported = await importMovieCompleted(movie.id, hist);
         if (imported) {
           const msg = `Imported movie ${label}`;
           addActivity({ kind: "imported", message: msg });
@@ -163,17 +175,31 @@ export async function pollMovieDownloadsOnce(): Promise<void> {
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
         const attempts = (movie.import_attempts ?? 0) + 1;
-        if (attempts < 6 && /no video found/i.test(error)) {
+        if (attempts < 40 && /no video found|not found|enoent/i.test(error)) {
           updateMovie(movie.id, {
             status: "downloading",
             import_attempts: attempts,
-            error: `Waiting for file (${attempts}/6): ${error.slice(0, 200)}`,
+            error: `Looking for finished file (${attempts}/40): ${error.slice(0, 220)}`,
           });
           continue;
         }
         await applyMovieSoftFail(movie, label, `Import: ${error}`);
       }
     } else if (/fail|delete|unpack|dupe/i.test(hist.Status) && !/success/i.test(hist.Status)) {
+      if (/dupe/i.test(hist.Status)) {
+        try {
+          const imported = await importMovieCompleted(movie.id, hist);
+          if (imported) {
+            const msg = `Imported movie ${label} (after NZBGet DUPE — file already present)`;
+            addActivity({ kind: "imported", message: msg });
+            await notify("Movie ready in Plex", msg);
+            await refreshMovieLibraries();
+            continue;
+          }
+        } catch {
+          // fall through
+        }
+      }
       await applyMovieSoftFail(movie, label, `NZBGet status: ${hist.Status}`, {
         immediate: /dupe/i.test(hist.Status),
       });
@@ -181,23 +207,34 @@ export async function pollMovieDownloadsOnce(): Promise<void> {
   }
 }
 
-async function importMovieCompleted(movieId: string, destDir: string): Promise<boolean> {
+async function importMovieCompleted(
+  movieId: string,
+  hist: { FinalDir?: string; DestDir?: string; Name?: string },
+): Promise<boolean> {
   const movie = getMovieById(movieId);
   if (!movie) return false;
 
-  const video = (await findVideoInDir(destDir)) || (await findVideoInDir(config.downloads));
-  if (!video) throw new Error(`No video found in ${destDir}`);
+  const { video, searched } = await findMovieVideo({
+    finalDir: hist.FinalDir,
+    destDir: hist.DestDir,
+    historyName: hist.Name,
+    title: movie.title,
+    year: movie.year,
+    releaseTitle: movie.release_title,
+  });
+  if (!video) {
+    throw new Error(
+      `No video found (looked in ${searched.slice(0, 4).join(" · ") || "downloads"}). ` +
+        `Mount NZBGet completed as DOWNLOADS_HOST.`,
+    );
+  }
 
   const folder = plexMovieFolder(movie.title, movie.year);
-  await mkdir(folder, { recursive: true });
+  await ensureDir(folder);
   const ext = extname(video);
   const destPath = join(folder, plexMovieFileName(movie.title, movie.year, ext));
 
-  try {
-    await rename(video, destPath);
-  } catch {
-    await copyFile(video, destPath);
-  }
+  await moveOrCopyVideo(video, destPath);
 
   updateMovie(movie.id, {
     status: "available",
@@ -207,37 +244,4 @@ async function importMovieCompleted(movieId: string, destDir: string): Promise<b
     import_attempts: 0,
   });
   return true;
-}
-
-async function findVideoInDir(dir: string): Promise<string | null> {
-  const videos: string[] = [];
-  async function walk(d: string): Promise<void> {
-    let entries;
-    try {
-      entries = await readdir(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const ent of entries) {
-      const full = join(d, ent.name);
-      if (ent.isDirectory()) await walk(full);
-      else if (/\.(mkv|mp4|m4v|avi|ts)$/i.test(ent.name)) videos.push(full);
-    }
-  }
-  await walk(dir);
-  if (!videos.length) return null;
-  let best = videos[0]!;
-  let bestSize = 0;
-  for (const v of videos) {
-    try {
-      const st = await stat(v);
-      if (st.size > bestSize) {
-        bestSize = st.size;
-        best = v;
-      }
-    } catch {
-      // skip
-    }
-  }
-  return best;
 }

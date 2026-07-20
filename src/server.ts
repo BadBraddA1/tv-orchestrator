@@ -107,6 +107,7 @@ const SETUP_KEYS = [
   "nzbget_user",
   "nzbget_pass",
   "nzbget_category",
+  "nzbget_path_prefix",
   "nzbgeek_url",
   "nzbgeek_api_key",
   "nzbfinder_url",
@@ -258,6 +259,7 @@ async function handleApi(
       nzbget_user: saved.nzbget_user || config.nzbget.user,
       nzbget_pass: saved.nzbget_pass || config.nzbget.pass,
       nzbget_category: saved.nzbget_category || config.nzbget.category,
+      nzbget_path_prefix: saved.nzbget_path_prefix || config.nzbget.pathPrefix,
       nzbgeek_url: saved.nzbgeek_url || config.nzbgeek.url,
       nzbgeek_api_key: saved.nzbgeek_api_key || config.nzbgeek.apiKey,
       nzbfinder_url: saved.nzbfinder_url || config.nzbfinder.url,
@@ -293,7 +295,9 @@ async function handleApi(
       tips: {
         admin:
           "Pick the password you’ll use to sign in. This is required before the rest of setup can finish.",
-        nzbget: "Open NZBGet → Settings → Security for username/password. Create category tv-orch under Categories.",
+        nzbget:
+          "Open NZBGet → Settings → Security for username/password. Create category tv-orch. " +
+          "DOWNLOADS_HOST must be NZBGet’s completed folder. If DestDir looks like /downloads/…, set Path prefix to /downloads so Orca can find & move files.",
         nzbgeek: "NZBGeek → API → copy your Newznab API key (api.nzbgeek.info).",
         nzbfinder: "NZB Finder account → API / Newznab key.",
         plex: "Plex → account → XML or https://support.plex.tv for X-Plex-Token from any plex URL (&X-Plex-Token=).",

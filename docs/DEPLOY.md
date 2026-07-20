@@ -30,7 +30,8 @@ curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/${REPO_
 | `PORT` | `3080` | Host port |
 | `TV_LIBRARY_HOST` | `./media/tv` | Plex TV folder on host |
 | `MOVIE_LIBRARY_HOST` | `./media/movies` | Plex Movies folder |
-| `DOWNLOADS_HOST` | `./media/downloads` | NZBGet completed (orca import source) |
+| `DOWNLOADS_HOST` | `./media/downloads` | Same folder NZBGet completes into (Orca import source) |
+| `NZBGET_PATH_PREFIX` | _(empty)_ | NZBGet DestDir prefix remapped to `/media/downloads` (e.g. `/downloads`) |
 | `NZBGET_*` / `NZBGEEK_*` / `PLEX_*` / `TMDB_*` / `ADMIN_*` | see `.env.example` | Optional seed into `.env` |
 
 2. Per site, keep secrets **only** on the host (never in git):

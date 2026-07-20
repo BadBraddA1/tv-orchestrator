@@ -95,6 +95,11 @@
         { key: "nzbget_user", label: "Username" },
         { key: "nzbget_pass", label: "Password", type: "password", secret: true },
         { key: "nzbget_category", label: "Category", placeholder: "tv-orch" },
+        {
+          key: "nzbget_path_prefix",
+          label: "NZBGet path prefix (optional)",
+          placeholder: "/downloads",
+        },
       ],
     },
     {
@@ -174,7 +179,13 @@
       id: "nzbget",
       title: "NZBGet",
       test: "nzbget",
-      keys: ["nzbget_url", "nzbget_user", "nzbget_pass", "nzbget_category"],
+      keys: [
+        "nzbget_url",
+        "nzbget_user",
+        "nzbget_pass",
+        "nzbget_category",
+        "nzbget_path_prefix",
+      ],
     },
     {
       id: "indexers",

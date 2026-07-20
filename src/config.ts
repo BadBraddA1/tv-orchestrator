@@ -42,7 +42,15 @@ export type AppConfig = {
   qualityProfile: "1080p" | "720p" | "any";
   hostProjectDir: string;
   composeHostDir: string;
-  nzbget: { url: string; user: string; pass: string; category: string; movieCategory: string };
+  nzbget: {
+    url: string;
+    user: string;
+    pass: string;
+    category: string;
+    movieCategory: string;
+    /** NZBGet's on-disk path prefix that maps to Orca DOWNLOADS (/media/downloads) */
+    pathPrefix: string;
+  };
   nzbgeek: { url: string; apiKey: string };
   nzbfinder: { url: string; apiKey: string };
   tmdb: { apiKey: string };
@@ -82,6 +90,12 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
         "NZBGET_MOVIE_CATEGORY",
         "movie-orch",
       ),
+      pathPrefix: settingOrEnv(
+        settings,
+        "nzbget_path_prefix",
+        "NZBGET_PATH_PREFIX",
+        "",
+      ).replace(/\/$/, ""),
     },
     nzbgeek: {
       url: settingOrEnv(settings, "nzbgeek_url", "NZBGEEK_URL", "https://api.nzbgeek.info").replace(/\/$/, ""),
