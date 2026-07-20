@@ -111,6 +111,8 @@ UI: `http://<r620-lan-ip>:3080`
 
 Create category `tv-orch` (or match `NZBGET_CATEGORY`) and point completed downloads at the folder you mount as `/media/downloads`.
 
+Orca talks to NZBGet over JSON-RPC. If Activity shows `Invalid parameter (Parameters)`, update orca (this is fixed) — it was NZBGet’s picky JSON parser + wrong append args, not a bad NZB.
+
 ### Indexers
 
 Paste Newznab API keys:
