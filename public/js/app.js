@@ -22,6 +22,7 @@
   const markSelectedBtn = document.getElementById("markSelectedBtn");
   const markAllStaleBtn = document.getElementById("markAllStaleBtn");
   const processDueBtn = document.getElementById("processDueBtn");
+  const cleanupStats = document.getElementById("cleanupStats");
   const userForm = document.getElementById("userForm");
   const userList = document.getElementById("userList");
   const healthBox = document.getElementById("healthBox");
@@ -542,33 +543,89 @@
 
   let lastStaleItems = [];
 
+  function formatBytes(n) {
+    if (!n || n < 1) return "0 B";
+    if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
+    if (n >= 1e6) return `${(n / 1e6).toFixed(0)} MB`;
+    return `${(n / 1e3).toFixed(0)} KB`;
+  }
+
+  function graceProgress(markedAt, deleteAfter) {
+    const start = new Date(markedAt).getTime();
+    const end = new Date(deleteAfter).getTime();
+    const now = Date.now();
+    if (!start || !end || end <= start) return 100;
+    const p = ((now - start) / (end - start)) * 100;
+    return Math.max(0, Math.min(100, Math.round(p)));
+  }
+
+  function renderCleanupStats(data) {
+    if (!cleanupStats) return;
+    const staleBytes = data.totalBytes || 0;
+    const pendingBytes = data.pendingBytes || 0;
+    const maxRef = Math.max(staleBytes, pendingBytes, 1);
+    cleanupStats.innerHTML = `
+      <div class="stat-tile warn">
+        <span class="stat-label">Stale reclaim</span>
+        <span class="stat-value">${formatBytes(staleBytes)}</span>
+        <div class="stat-bar"><span style="width:${Math.round((staleBytes / maxRef) * 100)}%"></span></div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">Episodes</span>
+        <span class="stat-value">${data.items?.length || 0}</span>
+        <div class="stat-bar"><span style="width:${Math.min(100, (data.items?.length || 0) * 2)}%"></span></div>
+      </div>
+      <div class="stat-tile warn">
+        <span class="stat-label">Pending delete</span>
+        <span class="stat-value">${formatBytes(pendingBytes)}</span>
+        <div class="stat-bar"><span style="width:${Math.round((pendingBytes / maxRef) * 100)}%"></span></div>
+      </div>
+      <div class="stat-tile ok">
+        <span class="stat-label">Grace</span>
+        <span class="stat-value">${data.graceDays ?? 2}d</span>
+        <div class="stat-bar"><span style="width:100%"></span></div>
+      </div>`;
+  }
+
   async function loadStale() {
     staleList.innerHTML = "<p class='sub'>Scanning…</p>";
     pendingList.replaceChildren();
+    if (cleanupStats) cleanupStats.innerHTML = "";
     const data = await api("/api/stale");
     lastStaleItems = data.items || [];
-    const gb = (data.totalBytes / 1e9).toFixed(1);
     const grace = data.graceDays ?? 2;
-    const pendGb = ((data.pendingBytes || 0) / 1e9).toFixed(2);
+    renderCleanupStats(data);
     staleSummary.textContent = data.plexConnected
-      ? `${data.items.length} stale (~${gb} GB). Mark → delete in ${grace}d unless watched. ${data.pending?.length || 0} pending (~${pendGb} GB).`
-      : `${data.items.length} candidates. Add Plex token for watch-based stale + grace-period spare.`;
+      ? `Not watched in ${data.staleDays} days (or never). Marked files delete in ${grace}d unless watched.`
+      : `Disk candidates only — add Plex token for watch-based stale + grace spare.`;
+
+    const maxSize = Math.max(...lastStaleItems.map((i) => i.size || 0), ...(data.pending || []).map((p) => p.size || 0), 1);
 
     if (data.pending?.length) {
       pendingTitle.hidden = false;
-      pendingTitle.textContent = `Pending deletes (${data.pending.length})`;
+      pendingTitle.textContent = `Pending deletes · ${data.pending.length}`;
       for (const p of data.pending) {
-        const row = document.createElement("div");
-        row.className = "row";
+        const pct = graceProgress(p.marked_at, p.delete_after);
         const when = new Date(p.delete_after).toLocaleString();
-        row.innerHTML = `<div class="row-top">
-            <strong>${escapeHtml(p.show_title)} S${String(p.season).padStart(2, "0")}E${String(p.episode).padStart(2, "0")}</strong>
-            <span class="chip warn">deletes ${when}</span>
+        const card = document.createElement("div");
+        card.className = "pending-card";
+        card.innerHTML = `
+          <div class="grace-ring" style="--p:${pct}">
+            <span class="grace-pct">${pct}%</span>
           </div>
-          <p class="meta">${(p.size / 1e6).toFixed(0)} MB · ${escapeHtml(p.reason || "")}</p>
-          <p class="meta">${escapeHtml(p.file_path)}</p>
-          <button type="button" class="ghost cancel-pending" data-id="${escapeHtml(p.id)}">Cancel</button>`;
-        pendingList.appendChild(row);
+          <div class="body">
+            <div class="row-top">
+              <strong>${escapeHtml(p.show_title)} S${String(p.season).padStart(2, "0")}E${String(p.episode).padStart(2, "0")}</strong>
+              <span class="chip warn">due</span>
+            </div>
+            <p class="meta">${formatBytes(p.size)} · deletes ${when}</p>
+            <p class="path" title="${escapeHtml(p.file_path)}">${escapeHtml(p.file_path)}</p>
+            <div class="size-meter">
+              <div class="track"><div class="fill" style="width:${Math.round(((p.size || 0) / maxSize) * 100) || 8}%"></div></div>
+            </div>
+            <button type="button" class="ghost cancel-pending" data-id="${escapeHtml(p.id)}">Cancel</button>
+          </div>`;
+        pendingList.appendChild(card);
       }
       pendingList.querySelectorAll(".cancel-pending").forEach((btn) => {
         btn.addEventListener("click", async () => {
@@ -587,7 +644,8 @@
 
     staleList.replaceChildren();
     if (!data.items.length) {
-      staleList.innerHTML = "<p class='sub'>Nothing looks stale (or all are already marked).</p>";
+      staleList.innerHTML =
+        "<p class='sub'>Nothing looks stale — or everything listed is already marked.</p>";
       return;
     }
     for (const item of data.items) {
@@ -596,15 +654,21 @@
       const watched = item.lastViewedAt
         ? new Date(item.lastViewedAt * 1000).toLocaleDateString()
         : "never";
+      const bar = Math.max(6, Math.round(((item.size || 0) / maxSize) * 100));
       row.innerHTML = `<label class="stale-check">
           <input type="checkbox" class="stale-cb" data-path="${escapeHtml(item.path)}" />
-          <span class="row-top">
-            <strong>${escapeHtml(item.show)} S${String(item.season).padStart(2, "0")}E${String(item.episode).padStart(2, "0")}</strong>
-            <span class="chip warn">${escapeHtml(item.reason)}</span>
+          <span>
+            <span class="row-top">
+              <strong>${escapeHtml(item.show)} S${String(item.season).padStart(2, "0")}E${String(item.episode).padStart(2, "0")}</strong>
+              <span class="chip warn">${escapeHtml(item.reason)}</span>
+            </span>
+            <p class="meta">${formatBytes(item.size)} · last watched ${watched}</p>
+            <div class="size-meter">
+              <div class="track"><div class="fill" style="width:${bar}%"></div></div>
+            </div>
+            <p class="meta" style="margin-top:0.35rem;font-family:var(--mono);font-size:0.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(item.path)}</p>
           </span>
-        </label>
-        <p class="meta">${(item.size / 1e6).toFixed(0)} MB · last watched ${watched}</p>
-        <p class="meta">${escapeHtml(item.path)}</p>`;
+        </label>`;
       staleList.appendChild(row);
     }
   }
