@@ -59,7 +59,6 @@ import { notify, notifyConfigured } from "./services/notify.js";
 import { ping as nzbgetPing, getDownloadsSnapshot } from "./services/nzbget.js";
 import { testSetupService, SECRET_SETUP_KEYS } from "./services/setupTests.js";
 import {
-  fetchAllEpisodesWithWatch,
   plexConfigured,
 } from "./services/plex.js";
 import { canSelfUpdate, startHostUpdate, readUpdateStatus } from "./services/update.js";
@@ -89,7 +88,6 @@ import {
   getHistory,
   getHomeStats,
 } from "./services/tautulli.js";
-import { scanVideoFiles } from "./services/library.js";
 import {
   buildLibraryInventory,
   getLastInventory,
@@ -103,8 +101,8 @@ import {
   markStaleForDelete,
   cancelPendingDelete,
   processDueDeletes,
-  pendingDeleteSummary,
 } from "./services/stale.js";
+import { buildStaleReport } from "./services/staleScan.js";
 
 import {
   readHostPaths,
@@ -1096,58 +1094,8 @@ async function handleApi(
   }
 
   if (path === "/api/stale" && method === "GET") {
-    const cutoffSec =
-      Math.floor(Date.now() / 1000) - config.staleDays * 86400;
-    const disk = await scanVideoFiles();
-    let plexItems: Awaited<ReturnType<typeof fetchAllEpisodesWithWatch>> = [];
-    if (await plexConfigured()) {
-      try {
-        plexItems = await fetchAllEpisodesWithWatch();
-      } catch (err) {
-        console.warn("[stale] plex", err);
-      }
-    }
-
-    const pending = pendingDeleteSummary();
-    const pendingPaths = new Set(pending.pending.map((p) => p.file_path));
-
-    const stale = [];
-    for (const file of disk) {
-      if (pendingPaths.has(file.filePath)) continue;
-      const plex = plexItems.find(
-        (p) =>
-          p.grandparentTitle &&
-          normalize(p.grandparentTitle) === normalize(file.showHint) &&
-          p.parentIndex === file.season &&
-          p.index === file.episode,
-      );
-      const lastViewed = plex?.lastViewedAt || 0;
-      const viewCount = plex?.viewCount || 0;
-      const neverWatched = viewCount === 0 && !lastViewed;
-      const oldWatch = lastViewed > 0 && lastViewed < cutoffSec;
-      if (neverWatched || oldWatch) {
-        stale.push({
-          show: file.showHint,
-          season: file.season,
-          episode: file.episode,
-          path: file.filePath,
-          size: file.size,
-          lastViewedAt: lastViewed || null,
-          viewCount,
-          reason: neverWatched ? "never_watched" : "not_watched_recently",
-        });
-      }
-    }
-    stale.sort((a, b) => b.size - a.size);
-    sendJson(res, 200, {
-      staleDays: config.staleDays,
-      graceDays: config.staleDeleteGraceDays,
-      plexConnected: await plexConfigured(),
-      items: stale.slice(0, 200),
-      totalBytes: stale.reduce((n, i) => n + i.size, 0),
-      pending: pending.pending,
-      pendingBytes: pending.totalBytes,
-    });
+    const report = await buildStaleReport();
+    sendJson(res, 200, report);
     return true;
   }
 
@@ -1170,42 +1118,15 @@ async function handleApi(
 
     let items = body.items || [];
     if (body.all) {
-      // Re-run stale scan and mark everything currently listed
-      const cutoffSec =
-        Math.floor(Date.now() / 1000) - config.staleDays * 86400;
-      const disk = await scanVideoFiles();
-      let plexItems: Awaited<ReturnType<typeof fetchAllEpisodesWithWatch>> = [];
-      if (await plexConfigured()) {
-        try {
-          plexItems = await fetchAllEpisodesWithWatch();
-        } catch {
-          plexItems = [];
-        }
-      }
-      items = [];
-      for (const file of disk) {
-        const plex = plexItems.find(
-          (p) =>
-            p.grandparentTitle &&
-            normalize(p.grandparentTitle) === normalize(file.showHint) &&
-            p.parentIndex === file.season &&
-            p.index === file.episode,
-        );
-        const lastViewed = plex?.lastViewedAt || 0;
-        const viewCount = plex?.viewCount || 0;
-        const neverWatched = viewCount === 0 && !lastViewed;
-        const oldWatch = lastViewed > 0 && lastViewed < cutoffSec;
-        if (neverWatched || oldWatch) {
-          items.push({
-            path: file.filePath,
-            show: file.showHint,
-            season: file.season,
-            episode: file.episode,
-            size: file.size,
-            reason: neverWatched ? "never_watched" : "not_watched_recently",
-          });
-        }
-      }
+      const report = await buildStaleReport();
+      items = report.items.map((i) => ({
+        path: i.path,
+        show: i.show,
+        season: i.season,
+        episode: i.episode,
+        size: i.size,
+        reason: i.reason,
+      }));
     }
 
     if (!items.length) {
@@ -1213,6 +1134,14 @@ async function handleApi(
       return true;
     }
     const result = markStaleForDelete(items, auth.user.id);
+    if (result.marked === 0) {
+      sendJson(res, 400, {
+        error:
+          `Could not mark any files (0/${items.length}). ` +
+          `Paths must sit under TV library ${config.tvLibrary}. Check Admin → Libraries host path + ./update.sh remount.`,
+      });
+      return true;
+    }
     await notify(
       "TV cleanup scheduled",
       `${result.marked} file(s) marked — delete after ${config.staleDeleteGraceDays}d unless watched`,
@@ -1241,16 +1170,13 @@ async function handleApi(
       sendJson(res, 403, { error: "Admin only" });
       return true;
     }
-    const result = await processDueDeletes();
+    const body = await readJson<{ force?: boolean }>(req).catch(() => ({} as { force?: boolean }));
+    const result = await processDueDeletes({ forceAllPending: Boolean(body.force) });
     sendJson(res, 200, result);
     return true;
   }
 
   return false;
-}
-
-function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
 export async function startServer(): Promise<void> {

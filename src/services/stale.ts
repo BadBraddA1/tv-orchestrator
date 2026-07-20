@@ -17,6 +17,7 @@ import {
   refreshTvLibraries,
   type PlexWatchItem,
 } from "./plex.js";
+import { findPlexEpisode } from "./staleScan.js";
 import { notify } from "./notify.js";
 
 export interface StaleMarkItem {
@@ -26,10 +27,6 @@ export interface StaleMarkItem {
   episode: number;
   size?: number;
   reason?: string;
-}
-
-function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
 /** Only allow deleting files under the configured TV library root. */
@@ -99,29 +96,22 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-function findPlexMatch(
-  row: PendingDeleteRow,
-  plexItems: PlexWatchItem[],
-): PlexWatchItem | undefined {
-  return plexItems.find(
-    (p) =>
-      p.grandparentTitle &&
-      normalize(p.grandparentTitle) === normalize(row.show_title) &&
-      p.parentIndex === row.season &&
-      p.index === row.episode,
-  );
-}
-
 /**
  * Due items: if Plex shows a watch after mark time → cancel; else delete file.
  */
-export async function processDueDeletes(): Promise<{
+export async function processDueDeletes(opts: { forceAllPending?: boolean } = {}): Promise<{
   deleted: number;
   spared: number;
   failed: number;
+  skippedNotDue: number;
 }> {
-  const due = listDuePendingDeletes(new Date().toISOString());
-  if (!due.length) return { deleted: 0, spared: 0, failed: 0 };
+  const due = opts.forceAllPending
+    ? listPendingDeletes("pending")
+    : listDuePendingDeletes(new Date().toISOString());
+  const skippedNotDue = opts.forceAllPending
+    ? 0
+    : listPendingDeletes("pending").length - due.length;
+  if (!due.length) return { deleted: 0, spared: 0, failed: 0, skippedNotDue };
 
   let plexItems: PlexWatchItem[] = [];
   if (await plexConfigured()) {
@@ -138,9 +128,14 @@ export async function processDueDeletes(): Promise<{
   const markedAtSec = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 
   for (const row of due) {
-    const plex = findPlexMatch(row, plexItems);
+    const plex = findPlexEpisode(
+      row.show_title,
+      row.season,
+      row.episode,
+      plexItems,
+    );
     const lastViewed = plex?.lastViewedAt || 0;
-    if (lastViewed >= markedAtSec(row.marked_at)) {
+    if (!opts.forceAllPending && lastViewed >= markedAtSec(row.marked_at)) {
       resolvePendingDelete(row.id, "cancelled", "Watched during grace period");
       spared++;
       addActivity({
@@ -188,7 +183,7 @@ export async function processDueDeletes(): Promise<{
     await notify("TV cleanup", `Spared ${spared} marked file(s) — watched during grace period`);
   }
 
-  return { deleted, spared, failed };
+  return { deleted, spared, failed, skippedNotDue };
 }
 
 export function pendingDeleteSummary(): {

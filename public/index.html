@@ -210,9 +210,12 @@
             <div class="stat-rail" id="cleanupStats" aria-live="polite"></div>
           </div>
           <div class="toolbar admin-only" hidden>
-            <button type="button" id="markSelectedBtn">Mark selected (delete in 2d)</button>
+            <button type="button" id="markSelectedBtn">Mark selected</button>
             <button type="button" id="markAllStaleBtn" class="ghost">Mark all listed</button>
             <button type="button" id="processDueBtn" class="ghost">Process due now</button>
+            <button type="button" id="forceDeletePendingBtn" class="ghost">
+              Delete marked now
+            </button>
           </div>
           <h2 class="section-title" id="pendingTitle" hidden>Pending deletes</h2>
           <div id="pendingList" class="stale-grid"></div>
@@ -271,6 +274,6 @@
         </div>
       </section>
     </div>
-    <script src="/js/app.js?v=orca111"></script>
+    <script src="/js/app.js?v=orca112"></script>
   </body>
 </html>

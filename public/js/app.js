@@ -47,6 +47,7 @@
   const markSelectedBtn = document.getElementById("markSelectedBtn");
   const markAllStaleBtn = document.getElementById("markAllStaleBtn");
   const processDueBtn = document.getElementById("processDueBtn");
+  const forceDeletePendingBtn = document.getElementById("forceDeletePendingBtn");
   const cleanupStats = document.getElementById("cleanupStats");
   const userForm = document.getElementById("userForm");
   const userList = document.getElementById("userList");
@@ -1402,6 +1403,7 @@
   }
 
   let lastStaleItems = [];
+  let lastStaleGraceDays = 2;
 
   function formatBytes(n) {
     if (!n || n < 1) return "0 B";
@@ -1448,28 +1450,56 @@
   }
 
   async function loadStale() {
-    staleList.innerHTML = "<p class='sub'>Scanning…</p>";
+    staleList.innerHTML = "<p class='sub'>Scanning library + Plex watch history…</p>";
     pendingList.replaceChildren();
     if (cleanupStats) cleanupStats.innerHTML = "";
-    const data = await api("/api/stale");
-    lastStaleItems = data.items || [];
-    const grace = data.graceDays ?? 2;
-    renderCleanupStats(data);
-    staleSummary.textContent = data.plexConnected
-      ? `Not watched in ${data.staleDays} days (or never). Marked files delete in ${grace}d unless watched.`
-      : `Disk candidates only — add Plex token for watch-based stale + grace spare.`;
+    try {
+      const data = await api("/api/stale");
+      lastStaleItems = data.items || [];
+      lastStaleGraceDays = data.graceDays ?? 2;
+      const grace = lastStaleGraceDays;
+      renderCleanupStats(data);
 
-    const maxSize = Math.max(...lastStaleItems.map((i) => i.size || 0), ...(data.pending || []).map((p) => p.size || 0), 1);
+      const bits = [];
+      if (data.diskEpisodeCount != null) {
+        bits.push(`${data.diskEpisodeCount} on disk`);
+      }
+      if (data.plexConnected) {
+        bits.push(
+          data.plexError
+            ? `Plex error: ${data.plexError}`
+            : `${data.plexEpisodeCount || 0} Plex episodes`,
+        );
+      } else {
+        bits.push("Plex not connected — disk-only");
+      }
+      bits.push(`library ${data.libraryPath || "?"}`);
 
-    if (data.pending?.length) {
-      pendingTitle.hidden = false;
-      pendingTitle.textContent = `Pending deletes · ${data.pending.length}`;
-      for (const p of data.pending) {
-        const pct = graceProgress(p.marked_at, p.delete_after);
-        const when = new Date(p.delete_after).toLocaleString();
-        const card = document.createElement("div");
-        card.className = "pending-card";
-        card.innerHTML = `
+      staleSummary.textContent = data.plexConnected && !data.plexError
+        ? `Not watched in ${data.staleDays} days (or never / not in Plex). Marked files delete in ${grace}d unless watched. · ${bits.join(" · ")}`
+        : `Disk candidates · add/fix Plex token for watch-based stale. · ${bits.join(" · ")}`;
+
+      if (!data.diskEpisodeCount) {
+        staleSummary.textContent =
+          `No episode files under ${data.libraryPath || "TV library"}. ` +
+          `Set Admin → Libraries host path to your TV Shows folder, then /update to remount.`;
+      }
+
+      const maxSize = Math.max(
+        ...lastStaleItems.map((i) => i.size || 0),
+        ...(data.pending || []).map((p) => p.size || 0),
+        1,
+      );
+
+      if (data.pending?.length) {
+        pendingTitle.hidden = false;
+        pendingTitle.textContent = `Pending deletes · ${data.pending.length}`;
+        for (const p of data.pending) {
+          const pct = graceProgress(p.marked_at, p.delete_after);
+          const when = new Date(p.delete_after).toLocaleString();
+          const card = document.createElement("div");
+          card.className = "pending-card";
+          card.innerHTML = `
           <div class="grace-ring" style="--p:${pct}">
             <span class="grace-pct">${pct}%</span>
           </div>
@@ -1485,37 +1515,38 @@
             </div>
             <button type="button" class="ghost cancel-pending" data-id="${escapeHtml(p.id)}">Cancel</button>
           </div>`;
-        pendingList.appendChild(card);
-      }
-      pendingList.querySelectorAll(".cancel-pending").forEach((btn) => {
-        btn.addEventListener("click", async () => {
-          await api("/api/stale/cancel", {
-            method: "POST",
-            body: JSON.stringify({ id: btn.getAttribute("data-id") }),
+          pendingList.appendChild(card);
+        }
+        pendingList.querySelectorAll(".cancel-pending").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            await api("/api/stale/cancel", {
+              method: "POST",
+              body: JSON.stringify({ id: btn.getAttribute("data-id") }),
+            });
+            loadStale();
+            loadActivity();
           });
-          loadStale();
-          loadActivity();
         });
-      });
-    } else {
-      pendingTitle.hidden = true;
-      pendingList.innerHTML = "";
-    }
+      } else {
+        pendingTitle.hidden = true;
+        pendingList.innerHTML = "";
+      }
 
-    staleList.replaceChildren();
-    if (!data.items.length) {
-      staleList.innerHTML =
-        "<p class='sub'>Nothing looks stale — or everything listed is already marked.</p>";
-      return;
-    }
-    for (const item of data.items) {
-      const row = document.createElement("div");
-      row.className = "row stale-row";
-      const watched = item.lastViewedAt
-        ? new Date(item.lastViewedAt * 1000).toLocaleDateString()
-        : "never";
-      const bar = Math.max(6, Math.round(((item.size || 0) / maxSize) * 100));
-      row.innerHTML = `<label class="stale-check">
+      staleList.replaceChildren();
+      if (!data.items.length) {
+        staleList.innerHTML =
+          "<p class='sub'>Nothing looks stale — or everything listed is already marked. " +
+          "Watched recently (within stale days) is hidden.</p>";
+        return;
+      }
+      for (const item of data.items) {
+        const row = document.createElement("div");
+        row.className = "row stale-row";
+        const watched = item.lastViewedAt
+          ? new Date(item.lastViewedAt * 1000).toLocaleDateString()
+          : "never";
+        const bar = Math.max(6, Math.round(((item.size || 0) / maxSize) * 100));
+        row.innerHTML = `<label class="stale-check">
           <input type="checkbox" class="stale-cb" data-path="${escapeHtml(item.path)}" />
           <span>
             <span class="row-top">
@@ -1529,7 +1560,11 @@
             <p class="meta" style="margin-top:0.35rem;font-family:var(--mono);font-size:0.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(item.path)}</p>
           </span>
         </label>`;
-      staleList.appendChild(row);
+        staleList.appendChild(row);
+      }
+    } catch (err) {
+      staleSummary.textContent = err.message || "Cleanup scan failed";
+      staleList.innerHTML = `<p class="error">${escapeHtml(err.message || "Failed")}</p>`;
     }
   }
 
@@ -1538,10 +1573,10 @@
       alert("Select at least one file");
       return;
     }
-    const grace = 2;
+    const grace = lastStaleGraceDays;
     if (
       !confirm(
-        `Mark ${items.length} file(s) for deletion in ${grace} days?\n\nIf someone watches them before then, they will be spared.`,
+        `Mark ${items.length} file(s) for deletion in ${grace} day(s)?\n\nIf someone watches them before then, they will be spared. Use “Delete marked now” to skip the wait.`,
       )
     ) {
       return;
@@ -1581,14 +1616,42 @@
   processDueBtn?.addEventListener("click", async () => {
     processDueBtn.disabled = true;
     try {
-      const r = await api("/api/stale/process", { method: "POST" });
-      alert(`Deleted ${r.deleted} · spared ${r.spared} · failed ${r.failed}`);
+      const r = await api("/api/stale/process", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      const skip = r.skippedNotDue ? ` · ${r.skippedNotDue} still in grace` : "";
+      alert(`Deleted ${r.deleted} · spared ${r.spared} · failed ${r.failed}${skip}`);
       loadStale();
       loadActivity();
     } catch (err) {
       alert(err.message);
     } finally {
       processDueBtn.disabled = false;
+    }
+  });
+
+  forceDeletePendingBtn?.addEventListener("click", async () => {
+    if (
+      !confirm(
+        "Permanently delete ALL marked pending files now (skip grace period)?\n\nThis cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    forceDeletePendingBtn.disabled = true;
+    try {
+      const r = await api("/api/stale/process", {
+        method: "POST",
+        body: JSON.stringify({ force: true }),
+      });
+      alert(`Deleted ${r.deleted} · failed ${r.failed}`);
+      loadStale();
+      loadActivity();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      forceDeletePendingBtn.disabled = false;
     }
   });
 

@@ -140,9 +140,13 @@ Cleanup uses a **broadcast-ops** visual language: teal accent, amber for stale/g
 
 ### Cleanup / offload
 
-**Cleanup** tab lists episodes not watched in `STALE_DAYS` (default 365) or never watched.
+**Cleanup** lists episodes not watched in `STALE_DAYS` (default 365), never watched, or on disk but not matched in Plex.
 
-Admins can **mark** files for deletion. After `STALE_DELETE_GRACE_DAYS` (default **2**), orca deletes them **only if** Plex shows no watch during the grace window. Cancel anytime from Pending deletes. Only paths under the TV library mount are touched.
+1. **Mark selected / Mark all** → grace period (`STALE_DELETE_GRACE_DAYS`, default 2)
+2. Watched during grace → spared; else hourly job or **Process due now** deletes
+3. **Delete marked now** skips grace when you need disk back immediately
+
+Needs a real **TV Shows** mount (`Admin → Libraries`) and **Plex URL + token**. The summary shows disk/Plex episode counts so an empty mount is obvious.
 
 ```bash
 STALE_DAYS=365
