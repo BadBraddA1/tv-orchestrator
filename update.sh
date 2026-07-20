@@ -14,10 +14,12 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/BadBraddA1/tv-orchestrator.git}"
+REPO_REF="${REPO_REF:-main}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/tv-orchestrator}"
 
-echo "==> TV Orchestrator update"
+echo "==> Orca (TV Orchestrator) update"
 echo "    Dir: $INSTALL_DIR"
+echo "    Ref: $REPO_REF"
 
 need_cmd() { command -v "$1" >/dev/null 2>&1; }
 
@@ -79,12 +81,19 @@ if [[ ! -d "$INSTALL_DIR/.git" ]]; then
   echo "==> Not installed yet — cloning…"
   need_cmd git || { run_root apt-get update && run_root apt-get install -y git; }
   mkdir -p "$(dirname "$INSTALL_DIR")"
-  git clone "$REPO_URL" "$INSTALL_DIR"
+  git clone --branch "$REPO_REF" "$REPO_URL" "$INSTALL_DIR" 2>/dev/null \
+    || git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 
 cd "$INSTALL_DIR"
-git fetch origin
-git pull --ff-only origin main || git reset --hard origin/main
+git fetch --tags --force origin 2>/dev/null || git fetch --force origin
+if git rev-parse "refs/tags/${REPO_REF}" >/dev/null 2>&1; then
+  git checkout -f "tags/${REPO_REF}"
+elif git rev-parse "origin/${REPO_REF}" >/dev/null 2>&1; then
+  git checkout -B "${REPO_REF}" "origin/${REPO_REF}"
+else
+  git pull --ff-only origin main || git reset --hard origin/main
+fi
 
 chmod +x install.sh update.sh 2>/dev/null || true
 
@@ -108,7 +117,7 @@ fi
 
 if [[ ! -f .compose.env ]]; then
   TV_LIBRARY_HOST="${TV_LIBRARY_HOST:-$INSTALL_DIR/media/tv}"
-  MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST:-/mnt/plex/Movies}"
+  MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST:-$INSTALL_DIR/media/movies}"
   DOWNLOADS_HOST="${DOWNLOADS_HOST:-$INSTALL_DIR/media/downloads}"
   mkdir -p "$TV_LIBRARY_HOST" "$MOVIE_LIBRARY_HOST" "$DOWNLOADS_HOST" data
   cat > .compose.env <<EOF
@@ -120,9 +129,9 @@ fi
 
 # Ensure movies mount is present for upgrades from TV-only installs
 if ! grep -qE '^MOVIE_LIBRARY_HOST=' .compose.env 2>/dev/null; then
-  echo "MOVIE_LIBRARY_HOST=\"${MOVIE_LIBRARY_HOST:-/mnt/plex/Movies}\"" >> .compose.env
+  echo "MOVIE_LIBRARY_HOST=\"${MOVIE_LIBRARY_HOST:-$INSTALL_DIR/media/movies}\"" >> .compose.env
 fi
-mkdir -p "${MOVIE_LIBRARY_HOST:-/mnt/plex/Movies}" 2>/dev/null || true
+mkdir -p "${MOVIE_LIBRARY_HOST:-$INSTALL_DIR/media/movies}" 2>/dev/null || true
 
 fix_compose_env_quotes .compose.env
 

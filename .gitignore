@@ -1,8 +1,15 @@
 node_modules/
 dist/
+data/
 data/*.db
 data/*.db-*
+media/
 .env
 .env.local
+.compose.env
+.hostdir
 *.log
 .DS_Store
+.idea/
+.vscode/
+*.tsbuildinfo

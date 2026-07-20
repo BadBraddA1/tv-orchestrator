@@ -22,11 +22,13 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/BadBraddA1/tv-orchestrator.git}"
+REPO_REF="${REPO_REF:-main}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/tv-orchestrator}"
 PORT_DEFAULT="${PORT:-3080}"
 
-echo "==> TV Orchestrator — Proxmox / Docker install"
+echo "==> Orca (TV Orchestrator) — Docker install"
 echo "    Target: $INSTALL_DIR"
+echo "    Ref:    $REPO_REF"
 echo "    User:   $(id -un) (uid=$(id -u))"
 
 need_cmd() { command -v "$1" >/dev/null 2>&1; }
@@ -96,15 +98,31 @@ else
 fi
 
 # --- clone / update ----------------------------------------------------------
+checkout_ref() {
+  local dir="$1"
+  git -C "$dir" fetch --tags --force origin 2>/dev/null || git -C "$dir" fetch --force origin || true
+  if git -C "$dir" rev-parse "refs/tags/${REPO_REF}" >/dev/null 2>&1; then
+    git -C "$dir" checkout -f "tags/${REPO_REF}"
+  elif git -C "$dir" rev-parse "origin/${REPO_REF}" >/dev/null 2>&1; then
+    git -C "$dir" checkout -B "${REPO_REF}" "origin/${REPO_REF}"
+  else
+    git -C "$dir" pull --ff-only || true
+  fi
+}
+
 if [[ -f "$INSTALL_DIR/package.json" ]]; then
   echo "==> Updating existing checkout…"
   if [[ -d "$INSTALL_DIR/.git" ]]; then
-    git -C "$INSTALL_DIR" pull --ff-only || true
+    checkout_ref "$INSTALL_DIR"
   fi
 else
-  echo "==> Cloning repo…"
+  echo "==> Cloning repo (${REPO_REF})…"
   mkdir -p "$(dirname "$INSTALL_DIR")"
-  git clone "$REPO_URL" "$INSTALL_DIR"
+  git clone --branch "$REPO_REF" "$REPO_URL" "$INSTALL_DIR" 2>/dev/null \
+    || git clone "$REPO_URL" "$INSTALL_DIR"
+  if [[ -d "$INSTALL_DIR/.git" ]]; then
+    checkout_ref "$INSTALL_DIR"
+  fi
 fi
 
 cd "$INSTALL_DIR"
@@ -144,6 +162,9 @@ set_env PORT "$PORT_DEFAULT"
 [[ -n "${PUSHOVER_USER_KEY:-}" ]] && set_env PUSHOVER_USER_KEY "$PUSHOVER_USER_KEY"
 [[ -n "${PUSHOVER_APP_TOKEN:-}" ]] && set_env PUSHOVER_APP_TOKEN "$PUSHOVER_APP_TOKEN"
 [[ -n "${NTFY_TOPIC:-}" ]] && set_env NTFY_TOPIC "$NTFY_TOPIC"
+[[ -n "${TMDB_API_KEY:-}" ]] && set_env TMDB_API_KEY "$TMDB_API_KEY"
+[[ -n "${TAUTULLI_URL:-}" ]] && set_env TAUTULLI_URL "$TAUTULLI_URL"
+[[ -n "${TAUTULLI_API_KEY:-}" ]] && set_env TAUTULLI_API_KEY "$TAUTULLI_API_KEY"
 [[ -n "${SESSION_SECRET:-}" ]] && set_env SESSION_SECRET "$SESSION_SECRET"
 
 if grep -q '^SESSION_SECRET=change-this-to-a-long-random-string$' .env; then
@@ -151,7 +172,7 @@ if grep -q '^SESSION_SECRET=change-this-to-a-long-random-string$' .env; then
 fi
 
 TV_LIBRARY_HOST="${TV_LIBRARY_HOST:-$INSTALL_DIR/media/tv}"
-MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST:-/mnt/plex/Movies}"
+MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST:-$INSTALL_DIR/media/movies}"
 DOWNLOADS_HOST="${DOWNLOADS_HOST:-$INSTALL_DIR/media/downloads}"
 mkdir -p "$TV_LIBRARY_HOST" "$MOVIE_LIBRARY_HOST" "$DOWNLOADS_HOST" "$INSTALL_DIR/data"
 
@@ -168,20 +189,20 @@ export TV_LIBRARY_HOST MOVIE_LIBRARY_HOST DOWNLOADS_HOST
 "${COMPOSE[@]}" --env-file .compose.env up -d --build
 
 LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
-[[ -z "$LAN_IP" ]] && LAN_IP="YOUR-R620-IP"
+[[ -z "$LAN_IP" ]] && LAN_IP="YOUR-HOST-IP"
 
 echo ""
-echo "==> Install complete."
+echo "==> Orca install complete."
 echo ""
 echo "  UI:        http://${LAN_IP}:${PORT_DEFAULT}"
 echo "  Dir:       ${INSTALL_DIR}"
+echo "  Ref:       ${REPO_REF}"
 echo "  Library:   ${TV_LIBRARY_HOST}  →  /media/tv"
 echo "  Movies:    ${MOVIE_LIBRARY_HOST}  →  /media/movies"
 echo "  Downloads: ${DOWNLOADS_HOST}  →  /media/downloads"
 echo ""
-echo "  Login:     ADMIN_USER / ADMIN_PASS from ${INSTALL_DIR}/.env"
+echo "  Login:     create admin in first-run setup (or ADMIN_USER / ADMIN_PASS in .env)"
 echo "  Logs:      cd ${INSTALL_DIR} && ${COMPOSE[*]} --env-file .compose.env logs -f"
 echo ""
-echo "Next: put NZBGet + indexer keys in ${INSTALL_DIR}/.env, then:"
-echo "  cd ${INSTALL_DIR} && ${COMPOSE[*]} --env-file .compose.env up -d"
+echo "Fleet notes: docs/DEPLOY.md — pin REPO_REF=vX.Y.Z for mass rollouts"
 echo ""

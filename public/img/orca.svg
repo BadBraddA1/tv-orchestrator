@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-labelledby="orcaTitle">
+  <title id="orcaTitle">Orca</title>
+  <!-- Mark: stylized orca  dark body, teal eye flash, white cheek patch -->
+  <defs>
+    <linearGradient id="orcaBody" x1="8" y1="12" x2="56" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0e1a28"/>
+      <stop offset="1" stop-color="#1a2f42"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="oklch(0.22 0.03 250)"/>
+  <path
+    fill="url(#orcaBody)"
+    d="M12 34c2-10 12-18 22-18 6 0 11 2 15 6l3-8c1-2 3-2 4 0l2 6c1 2 0 4-2 5l-6 2c5 4 8 10 8 16 0 2-1 4-3 4H18c-4 0-7-4-6-8l0-5z"
+  />
+  <path
+    fill="oklch(0.78 0.12 210)"
+    d="M38 28c4 0 7 2 9 5-3 1-6 1-9 0-2-1-3-3-3-5 0 0 1 0 3 0z"
+  />
+  <path
+    fill="#e8eef4"
+    opacity="0.92"
+    d="M18 36c6-1 12 0 16 4 1 1 0 3-2 3-6 0-12-2-16-5-1-1 0-2 2-2z"
+  />
+  <circle cx="42" cy="26" r="2.2" fill="oklch(0.78 0.12 210)"/>
+</svg>

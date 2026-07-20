@@ -1,66 +1,47 @@
-# TV Orchestrator
+# Orca (TV Orchestrator)
 
-Overseerr-style **household TV + movie request portal** + grab/import brain for your **Dell R620 / Proxmox** setup.
+Household **TV + movie request portal** + grab/import brain for **Docker / Proxmox**. Brand: **Orca**.
 
 - Family searches and requests **TV shows** (TVMaze) or **movies** (TMDB)
 - App finds NZBs on **NZBGeek** + **NZB Finder**
 - Sends downloads to **NZBGet** (categories `tv-orch` / `movie-orch`)
 - Renames/moves into your **Plex TV** and **Movies** folders
-- Live **Activity** + optional **Pushover/ntfy** (failures and snatches both ping your phone)
-- **Cleanup** page for stale unwatched media (via Plex watch history)
+- Live **Activity** + optional **Pushover/ntfy**
+- **Downloads** queue, **Retry** on failures, **Cleanup**, **Channels** hoppers
 
-No Sonarr / Radarr / Overseerr required for this household flow.
+No Sonarr / Radarr / Overseerr required for this flow.
 
-See **[docs/CHANNELS.md](docs/CHANNELS.md)** for the Netflix-y plan: Tautulli usage → 24/7 hoppers → recommendations.
+**Mass deploy:** see **[docs/DEPLOY.md](docs/DEPLOY.md)** (pin `REPO_REF=v1.1.0`, per-site `.env`, fleet update).  
+**Channels vision:** **[docs/CHANNELS.md](docs/CHANNELS.md)**.
 
-## Install on Proxmox (one command)
-
-On the R620 Proxmox host (or a Docker CT/VM):
-
-```bash
-curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh?$(date +%s)" | bash
-```
-
-First open of the site runs a **setup walkthrough**:
-
-1. **Create admin login** (username + password) — you stay signed in for the rest
-2. NZBGet, NZBGeek, NZB Finder, Plex token, optional push
-
-If you only see an empty **“Connect your stack”** card with Continue (no fields): that’s a stuck shell — hard-refresh after updating (`Cmd/Ctrl+Shift+R`). The real sign-in form is underneath; CSS previously left the empty setup card visible.
-
-If you see **“Admin required after setup”**, the wizard finished (or got marked complete) without you being signed in. On the login screen:
-
-1. Try **brad** / **changeme** (or whatever you set as `ADMIN_USER` / `ADMIN_PASS` in `.env`)
-2. Click **Unlock / restart setup** — that clears the lock and puts you back in the walkthrough
-
-Or on the host:
+## Install (one command)
 
 ```bash
-docker exec -it tv-orchestrator sh -c "sqlite3 /data/tv-orchestrator.db \"UPDATE settings SET value='false' WHERE key='setup_complete';\""
-# then refresh the UI
+curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh" | bash
 ```
 
-### Push updates to the box
+Pin a release for fleets:
 
-On the Proxmox host:
+```bash
+curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/v1.1.0/install.sh" | \
+  REPO_REF=v1.1.0 bash
+```
+
+First open runs a **setup walkthrough** (admin login → stack APIs). Prefer **Admin → Connections** later to edit one service at a time (Test before Save; blank secrets keep existing).
+
+If you see **“Admin required after setup”**, use **Unlock / restart setup** on the login screen with your admin password.
+
+### Push updates
 
 ```bash
 cd /root/tv-orchestrator && ./update.sh
-# or:
-curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/update.sh | bash
+# pin:
+REPO_REF=v1.1.0 ./update.sh
 ```
 
-Or in the UI: **Admin → /update — pull & rebuild** (background rebuild; needs docker.sock + project mount).
+Or **Admin → /update** after the first host `./update.sh` (writes `COMPOSE_HOST_DIR`).
 
-First time enabling in-app update, run once on the host so it records the real path:
-
-```bash
-cd /root/tv-orchestrator && ./update.sh
-```
-
-That writes `COMPOSE_HOST_DIR` / `.hostdir`. After that, Admin → Update works without SSH.
-
-With your real paths / keys:
+With real paths / keys:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh | \
@@ -75,9 +56,7 @@ curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/ins
   bash
 ```
 
-Movies land in `MOVIE_LIBRARY_HOST` (default `/mnt/plex/Movies`) as `Title (Year)/Title (Year).mkv`. Create NZBGet category **movie-orch** (or match `NZBGET_MOVIE_CATEGORY`). Add a free [TMDB API key](https://www.themoviedb.org/settings/api) in setup so anyone in the household can search posters and request.
-
-Then open `http://<r620-lan-ip>:3080` and sign in.
+Then open `http://<lan-ip>:3080`.
 
 ## Quick start (Mac / test)
 

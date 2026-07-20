@@ -1,7 +1,7 @@
 {
   "name": "tv-orchestrator",
-  "version": "1.0.0",
-  "description": "Overseerr-style TV request portal + NZBGet grab/import brain for Proxmox",
+  "version": "1.1.0",
+  "description": "Orca — household TV & movie request portal + NZBGet grab/import for Docker/Proxmox",
   "private": true,
   "type": "module",
   "scripts": {

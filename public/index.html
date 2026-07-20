@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>TV Orchestrator</title>
+    <meta name="theme-color" content="#121c28" />
+    <meta name="description" content="Orca — household TV & movie requests for Plex" />
+    <title>Orca</title>
+    <link rel="icon" href="/img/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/img/orca.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -13,8 +17,13 @@
     <div id="app">
       <section id="setupView" class="login-view" hidden>
         <div class="setup-card">
-          <p class="eyebrow">First-run setup</p>
-          <h1 id="setupTitle">Connect your stack</h1>
+          <div class="brand-lockup">
+            <img class="brand-mark" src="/img/orca.svg" width="48" height="48" alt="" />
+            <div>
+              <p class="eyebrow">Orca</p>
+              <h1 id="setupTitle">Connect your stack</h1>
+            </div>
+          </div>
           <p class="sub" id="setupTip"></p>
           <div class="setup-steps" id="setupSteps"></div>
           <form id="setupForm" class="setup-form"></form>
@@ -29,13 +38,18 @@
 
       <section id="loginView" class="login-view">
         <div class="login-card">
-          <p class="eyebrow">Household media</p>
-          <h1>TV &amp; Movies for Plex</h1>
+          <div class="brand-lockup">
+            <img class="brand-mark brand-mark-lg" src="/img/orca.svg" width="64" height="64" alt="Orca" />
+            <div>
+              <p class="eyebrow">Orca</p>
+              <h1>TV &amp; Movies for Plex</h1>
+            </div>
+          </div>
           <p class="sub">Search, request, and watch it land in Plex — shows and movies, no tech talk required.</p>
           <form id="loginForm">
             <label>
               Username
-              <input name="username" autocomplete="username" required value="brad" />
+              <input name="username" autocomplete="username" required />
             </label>
             <label>
               Password
@@ -54,9 +68,12 @@
 
       <section id="mainView" class="main-view" hidden>
         <header class="top">
-          <div>
-            <p class="eyebrow">Orca</p>
-            <h1>TV &amp; Movies</h1>
+          <div class="brand-lockup">
+            <img class="brand-mark" src="/img/orca.svg" width="40" height="40" alt="" />
+            <div>
+              <p class="eyebrow">Orca</p>
+              <h1>TV &amp; Movies</h1>
+            </div>
           </div>
           <div class="top-right">
             <span id="whoami" class="who"></span>
@@ -246,6 +263,6 @@
         </div>
       </section>
     </div>
-    <script src="/js/app.js?v=channels1"></script>
+    <script src="/js/app.js?v=orca110"></script>
   </body>
 </html>
