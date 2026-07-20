@@ -3,7 +3,7 @@
  * Clears the backlog of finished downloads that never got imported.
  */
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { readdir, rmdir, stat } from "node:fs/promises";
+import { readdir, rmdir, stat, unlink } from "node:fs/promises";
 import { config } from "../config.js";
 import {
   listSeries,
@@ -60,7 +60,22 @@ function titlesMatch(a: string, b: string): boolean {
   const na = normalizeTitleKey(a);
   const nb = normalizeTitleKey(b);
   if (!na || !nb) return false;
-  return na.includes(nb) || nb.includes(na);
+  if (na === nb) return true;
+  const shorter = na.length <= nb.length ? na : nb;
+  const longer = na.length <= nb.length ? nb : na;
+  if (shorter.length < 5) return false;
+  // Require similar length so "The Odyssey" ≠ "The Odyssey The Making Of An Epic"
+  if (shorter.length / longer.length < 0.72) return false;
+  return longer.includes(shorter);
+}
+
+async function removeCompletedLeftover(video: string): Promise<void> {
+  try {
+    await unlink(video);
+  } catch {
+    // ignore
+  }
+  await tryRemoveEmptyParents(video, config.downloads);
 }
 
 async function tryRemoveEmptyParents(start: string, stopAt: string): Promise<void> {
@@ -139,7 +154,7 @@ async function importTvFile(
   try {
     const st = await stat(dest);
     if (st.size > MIN_BYTES) {
-      // already in library — drop duplicate from downloads if smaller/equal
+      // already in library — drop duplicate from downloads
       if (existing) {
         updateEpisode(existing.id, {
           status: "available",
@@ -149,6 +164,7 @@ async function importTvFile(
           import_attempts: 0,
         });
       }
+      await removeCompletedLeftover(video);
       return "skipped";
     }
   } catch {
@@ -182,8 +198,14 @@ async function importMovieFile(video: string): Promise<"moved" | "skipped"> {
   const parent = basename(dirname(video));
   const fromFolder = parseMovieHint(parent);
   const fromFile = parseMovieHint(basename(video));
-  const hint =
-    fromFolder?.year != null ? fromFolder : fromFile || fromFolder;
+  // Prefer the file stem when the folder looks like NZBGet's mangled release name
+  const folderLooksRelease =
+    /_/.test(parent) || /\d{4}_/.test(parent) || parent.length > 40;
+  const hint = folderLooksRelease
+    ? fromFile || fromFolder
+    : fromFolder?.year != null
+      ? fromFolder
+      : fromFile || fromFolder;
   if (!hint) return "skipped";
 
   const movies = listMovies();
@@ -223,6 +245,7 @@ async function importMovieFile(video: string): Promise<"moved" | "skipped"> {
           import_attempts: 0,
         });
       }
+      await removeCompletedLeftover(video);
       return "skipped";
     }
   } catch {
@@ -257,7 +280,13 @@ export async function sweepDownloads(limit = 0): Promise<SweepResult> {
     errors: [],
   };
 
-  const videos = await collectVideosUnder(config.downloads);
+  // Only Orca category folders — never walk other completed/* libraries
+  const tvCat = join(config.downloads, config.nzbget.category);
+  const movieCat = join(config.downloads, config.nzbget.movieCategory);
+  const videos = [
+    ...(await collectVideosUnder(tvCat)),
+    ...(await collectVideosUnder(movieCat)),
+  ];
   // Prefer larger files first (real releases over samples we might mis-detect)
   const sized: Array<{ path: string; size: number }> = [];
   for (const v of videos) {

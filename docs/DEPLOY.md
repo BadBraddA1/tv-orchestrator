@@ -28,9 +28,9 @@ curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/${REPO_
 | `REPO_URL` | this GitHub repo | Source |
 | `REPO_REF` | `main` | Branch or tag to check out |
 | `PORT` | `3080` | Host port |
-| `TV_LIBRARY_HOST` | `./media/tv` | Plex TV folder on host |
-| `MOVIE_LIBRARY_HOST` | `./media/movies` | Plex Movies folder |
-| `DOWNLOADS_HOST` | `./media/downloads` | Same folder NZBGet completes into (Orca import source) |
+| `TV_LIBRARY_HOST` | `./media/tv` | Plex **TV Shows** folder (`…/TV Shows`) |
+| `MOVIE_LIBRARY_HOST` | `./media/movies` | Plex **Movies** folder |
+| `DOWNLOADS_HOST` | `./media/downloads` | NZBGet completed parent (`…/rip/completed` with `tv-orch` + `movie-orch` inside) |
 | `NZBGET_PATH_PREFIX` | _(empty)_ | NZBGet DestDir prefix remapped to `/media/downloads` (e.g. `/downloads`) |
 | `NZBGET_*` / `NZBGEEK_*` / `PLEX_*` / `TMDB_*` / `ADMIN_*` | see `.env.example` | Optional seed into `.env` |
 

@@ -47,7 +47,7 @@ With real paths / keys:
 curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh | \
   TV_LIBRARY_HOST="/mnt/plex/TV Shows" \
   MOVIE_LIBRARY_HOST=/mnt/plex/Movies \
-  DOWNLOADS_HOST=/mnt/nzbget/completed \
+  DOWNLOADS_HOST=/mnt/plex/rip/completed \
   NZBGET_URL=http://127.0.0.1:6789 \
   NZBGEEK_API_KEY=your_key \
   NZBFINDER_API_KEY=your_key \
@@ -86,19 +86,39 @@ docker compose --env-file .compose.env up -d --build
 If your library path has a space (`TV Shows`), quote it in `.compose.env`:
 
 ```bash
+# Brad / Plexv2 (Proxmox SMB → usually /mnt/plex)
 TV_LIBRARY_HOST="/mnt/plex/TV Shows"
-DOWNLOADS_HOST=/mnt/plex/TransCache
+MOVIE_LIBRARY_HOST=/mnt/plex/Movies
+DOWNLOADS_HOST=/mnt/plex/rip/completed
 ```
+
+Mac share of the same disk:
+
+```bash
+TV_LIBRARY_HOST="/Volumes/Plexv2/TV Shows"
+MOVIE_LIBRARY_HOST=/Volumes/Plexv2/Movies
+DOWNLOADS_HOST=/Volumes/Plexv2/rip/completed
+```
+
+NZBGet categories `tv-orch` / `movie-orch` must complete **into** that downloads folder. Orca then moves:
+
+- `…/rip/completed/tv-orch/…` → `…/TV Shows/Show/Season XX/`
+- `…/rip/completed/movie-orch/…` → `…/Movies/Title (Year)/`
 
 UI: `http://<r620-lan-ip>:3080`
 
 ### NZBGet + import (files must move)
 
-Create categories `tv-orch` / `movie-orch` (or match `NZBGET_*_CATEGORY`). **Completed downloads must land in the same folder you mount as `DOWNLOADS_HOST`** → `/media/downloads` inside Orca. After SUCCESS, Orca finds the video, renames it into TV Shows / Movies, then Plex refreshes.
+Create categories `tv-orch` / `movie-orch` (or match `NZBGET_*_CATEGORY`). Mount **`DOWNLOADS_HOST` to the completed parent** (e.g. `…/rip/completed`) so both category folders sit under `/media/downloads`. After SUCCESS, Orca moves:
+
+| From (completed) | To (Plex home) |
+| --- | --- |
+| `…/rip/completed/tv-orch/…` | `…/TV Shows/Show/Season XX/` |
+| `…/rip/completed/movie-orch/…` | `…/Movies/Title (Year)/` |
 
 If NZBGet reports paths like `/downloads/tv-orch/...` but Orca only sees `/media/downloads/...`, set **NZBGet path prefix** in Admin → Connections (or `NZBGET_PATH_PREFIX=/downloads`). Without a working mount + mapping, Activity stays on “Looking for finished file…” and retries used to re-grab → **DELETED/DUPE** dumps — that re-grab on import miss is fixed; still fix the mount so imports succeed.
 
-**Stuck backlog on the completed drive:** Library → **Import stuck downloads** (or Downloads tab) walks `/media/downloads`, moves finished TV/movies into Plex homes, and skips samples. The import ticker also drains ~25 files per cycle automatically after `./update.sh`.
+**Stuck backlog:** Library / Downloads → **Import stuck downloads** (only scans `tv-orch` + `movie-orch`, never other folders under completed). The import ticker also drains ~25 files per cycle after `./update.sh`.
 
 Orca talks to NZBGet over JSON-RPC. If Activity shows `Invalid parameter (Parameters)`, update orca (this is fixed) — it was NZBGet’s picky JSON parser + wrong append args, not a bad NZB.
 

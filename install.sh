@@ -8,8 +8,9 @@
 #
 # Optional env overrides:
 #   INSTALL_DIR=/opt/tv-orchestrator
-#   TV_LIBRARY_HOST=/mnt/plex/tv
-#   DOWNLOADS_HOST=/mnt/nzbget/completed
+#   TV_LIBRARY_HOST="/mnt/plex/TV Shows"
+#   MOVIE_LIBRARY_HOST=/mnt/plex/Movies
+#   DOWNLOADS_HOST=/mnt/plex/rip/completed
 #   NZBGET_URL=http://127.0.0.1:6789
 #   NZBGEEK_API_KEY=...
 #   NZBFINDER_API_KEY=...

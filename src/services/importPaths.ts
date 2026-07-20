@@ -17,6 +17,9 @@ const COMMON_PREFIXES = [
   "/mnt/nzbget",
   "/mnt/nzbget/completed",
   "/mnt/plex/TransCache",
+  "/mnt/plex/rip/completed",
+  "/mnt/rootplex/rip/completed",
+  "/Volumes/Plexv2/rip/completed",
   "/inter",
   "/dst",
 ];

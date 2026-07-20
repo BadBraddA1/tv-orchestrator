@@ -59,11 +59,13 @@ export async function findEpisodeVideo(input: {
   releaseTitle?: string | null;
 }): Promise<{ video: string; searched: string[] }> {
   const searched: string[] = [];
+  const catDir = join(config.downloads, config.nzbget.category);
   const dirs = await resolveExistingImportDirs(
     input.finalDir,
     input.destDir,
+    input.historyName ? join(catDir, basename(input.historyName)) : null,
     input.historyName ? join(config.downloads, basename(input.historyName)) : null,
-    config.downloads,
+    catDir,
   );
   searched.push(...dirs);
 
@@ -132,11 +134,13 @@ export async function findMovieVideo(input: {
   releaseTitle?: string | null;
 }): Promise<{ video: string; searched: string[] }> {
   const searched: string[] = [];
+  const catDir = join(config.downloads, config.nzbget.movieCategory);
   const dirs = await resolveExistingImportDirs(
     input.finalDir,
     input.destDir,
+    input.historyName ? join(catDir, basename(input.historyName)) : null,
     input.historyName ? join(config.downloads, basename(input.historyName)) : null,
-    config.downloads,
+    catDir,
   );
   searched.push(...dirs);
   for (const p of candidateImportPaths(input.finalDir, input.destDir)) {
