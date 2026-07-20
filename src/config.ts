@@ -39,6 +39,7 @@ export type AppConfig = {
   sessionSecret: string;
   qualityProfile: "1080p" | "720p" | "any";
   hostProjectDir: string;
+  composeHostDir: string;
   nzbget: { url: string; user: string; pass: string; category: string };
   nzbgeek: { url: string; apiKey: string };
   nzbfinder: { url: string; apiKey: string };
@@ -63,6 +64,7 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
     sessionSecret: str("SESSION_SECRET", "dev-secret-change-me"),
     qualityProfile: (quality === "720p" || quality === "any" ? quality : "1080p"),
     hostProjectDir: str("HOST_PROJECT_DIR", "/host/project"),
+    composeHostDir: str("COMPOSE_HOST_DIR", ""),
     nzbget: {
       url: settingOrEnv(settings, "nzbget_url", "NZBGET_URL", "http://127.0.0.1:6789").replace(/\/$/, ""),
       user: settingOrEnv(settings, "nzbget_user", "NZBGET_USER", "nzbget"),

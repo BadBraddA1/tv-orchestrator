@@ -576,9 +576,15 @@
     healthBox.textContent = JSON.stringify(health, null, 2);
     try {
       const st = await api("/api/admin/update-status");
-      updateStatus.textContent = st.ok
-        ? "Self-update ready (docker.sock + project mount)."
-        : st.reason;
+      if (st.ok) {
+        updateStatus.textContent = `Self-update ready (host ${st.composeHostDir || "mounted"}).`;
+      } else {
+        updateStatus.textContent = st.reason;
+      }
+      if (st.logTail) {
+        updateLog.hidden = false;
+        updateLog.textContent = st.logTail;
+      }
     } catch (err) {
       updateStatus.textContent = err.message;
     }
@@ -687,17 +693,42 @@
   updateBtn.addEventListener("click", async () => {
     updateBtn.disabled = true;
     updateLog.hidden = false;
-    updateLog.textContent = "Updating…";
+    updateLog.textContent = "Starting background update…";
     try {
       const r = await api("/api/admin/update", { method: "POST" });
       if (r.hostCommand) {
         updateLog.textContent = `${r.message || ""}\n\n${r.hostCommand}`;
+        updateStatus.textContent = "Update needs host command (once).";
       } else {
-        updateLog.textContent = r.log || JSON.stringify(r, null, 2);
+        updateLog.textContent =
+          `${r.message || "Update started."}\n\nAfter ~2 minutes, hard-refresh this page.\nLog: ${r.logPath || "/data/last-update.log"}`;
+        updateStatus.textContent = "Update running in background…";
+        // Poll a few times once the new container is up
+        let tries = 0;
+        const poll = async () => {
+          tries += 1;
+          try {
+            const st = await api("/api/admin/update-status");
+            if (st.logTail) updateLog.textContent = st.logTail;
+            if (st.last?.state === "ok") {
+              updateStatus.textContent = "Update finished — hard-refresh if UI looks old.";
+              return;
+            }
+            if (st.last?.state === "failed") {
+              updateStatus.textContent = "Update failed — see log below or run ./update.sh on host.";
+              return;
+            }
+          } catch {
+            updateStatus.textContent = `Container restarting… retry ${tries}`;
+          }
+          if (tries < 40) setTimeout(poll, 5000);
+        };
+        setTimeout(poll, 8000);
       }
-      updateStatus.textContent = r.ok ? "Update finished." : "Update needs host command.";
     } catch (err) {
-      updateLog.textContent = err.message;
+      updateLog.textContent =
+        `${err.message}\n\nIf this appeared mid-rebuild, wait 2 minutes and hard-refresh.\nOr on Proxmox: cd /root/tv-orchestrator && ./update.sh`;
+      updateStatus.textContent = "Update request interrupted (often OK during rebuild).";
     } finally {
       updateBtn.disabled = false;
     }

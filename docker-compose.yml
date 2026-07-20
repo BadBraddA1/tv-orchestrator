@@ -12,6 +12,8 @@ services:
       TV_LIBRARY: /media/tv
       DOWNLOADS: /media/downloads
       HOST_PROJECT_DIR: /host/project
+      # Absolute path on the Proxmox host (written by ./update.sh / install.sh)
+      COMPOSE_HOST_DIR: ${COMPOSE_HOST_DIR:-}
     volumes:
       - ./data:/data
       - ${TV_LIBRARY_HOST:-./media/tv}:/media/tv

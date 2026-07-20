@@ -48,7 +48,15 @@ cd /root/tv-orchestrator && ./update.sh
 curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/update.sh | bash
 ```
 
-Or in the UI: **Admin → /update — pull & rebuild** (needs docker.sock + project mount — included in compose).
+Or in the UI: **Admin → /update — pull & rebuild** (background rebuild; needs docker.sock + project mount).
+
+First time enabling in-app update, run once on the host so it records the real path:
+
+```bash
+cd /root/tv-orchestrator && ./update.sh
+```
+
+That writes `COMPOSE_HOST_DIR` / `.hostdir`. After that, Admin → Update works without SSH.
 
 With your real paths / keys:
 

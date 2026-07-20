@@ -9,6 +9,7 @@
 #
 # Optional:
 #   INSTALL_DIR=/root/tv-orchestrator
+#   COMPOSE_HOST_DIR=/root/tv-orchestrator   # required when run from inside the container
 
 set -euo pipefail
 
@@ -52,6 +53,28 @@ fix_compose_env_quotes() {
   mv "$tmp" "$file"
 }
 
+# Ensure COMPOSE_HOST_DIR= (absolute path on the Proxmox host) is in .compose.env
+ensure_compose_host_dir() {
+  local host_dir="$1"
+  local file="$2"
+  touch "$file"
+  if grep -qE '^COMPOSE_HOST_DIR=' "$file" 2>/dev/null; then
+    # rewrite line
+    local tmp
+    tmp="$(mktemp)"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      if [[ "$line" =~ ^COMPOSE_HOST_DIR= ]]; then
+        printf 'COMPOSE_HOST_DIR=%s\n' "$host_dir" >> "$tmp"
+      else
+        printf '%s\n' "$line" >> "$tmp"
+      fi
+    done < "$file"
+    mv "$tmp" "$file"
+  else
+    printf 'COMPOSE_HOST_DIR=%s\n' "$host_dir" >> "$file"
+  fi
+}
+
 if [[ ! -d "$INSTALL_DIR/.git" ]]; then
   echo "==> Not installed yet — cloning…"
   need_cmd git || { run_root apt-get update && run_root apt-get install -y git; }
@@ -93,17 +116,38 @@ DOWNLOADS_HOST="${DOWNLOADS_HOST}"
 EOF
 fi
 
-# Fix leftover unquoted paths like TV_LIBRARY_HOST=/mnt/plex/TV Shows
 fix_compose_env_quotes .compose.env
 
+# Real host path for docker compose volume binds (daemon sees host FS, not /host/project)
+if [[ -n "${COMPOSE_HOST_DIR:-}" ]]; then
+  HOST_COMPOSE_DIR="$COMPOSE_HOST_DIR"
+elif [[ -f .hostdir ]]; then
+  HOST_COMPOSE_DIR="$(tr -d '\n' < .hostdir)"
+elif [[ "$INSTALL_DIR" != "/host/project" ]]; then
+  HOST_COMPOSE_DIR="$(pwd -P)"
+else
+  echo "ERROR: Running inside the container without COMPOSE_HOST_DIR." >&2
+  echo "  On Proxmox once:  cd /root/tv-orchestrator && ./update.sh" >&2
+  echo "  That writes .hostdir / COMPOSE_HOST_DIR so in-app update works next time." >&2
+  exit 1
+fi
+
+# Persist host path for future in-app updates (when we run on the real host)
+if [[ "$INSTALL_DIR" != "/host/project" ]]; then
+  printf '%s\n' "$(pwd -P)" > .hostdir
+  ensure_compose_host_dir "$(pwd -P)" .compose.env
+  HOST_COMPOSE_DIR="$(pwd -P)"
+fi
+
+echo "    Compose dir (host): $HOST_COMPOSE_DIR"
+
 # Do NOT `source .compose.env` — unquoted spaces become shell commands.
-# docker compose --env-file handles KEY="value with spaces".
 
 echo "==> Rebuilding container…"
 "${COMPOSE[@]}" \
-  --project-directory "$INSTALL_DIR" \
-  -f "$INSTALL_DIR/docker-compose.yml" \
-  --env-file "$INSTALL_DIR/.compose.env" \
+  --project-directory "$HOST_COMPOSE_DIR" \
+  -f "$HOST_COMPOSE_DIR/docker-compose.yml" \
+  --env-file "$HOST_COMPOSE_DIR/.compose.env" \
   up -d --build
 
 LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"

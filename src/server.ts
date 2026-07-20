@@ -46,7 +46,7 @@ import {
   fetchAllEpisodesWithWatch,
   plexConfigured,
 } from "./services/plex.js";
-import { canSelfUpdate, runHostUpdate } from "./services/update.js";
+import { canSelfUpdate, startHostUpdate, readUpdateStatus } from "./services/update.js";
 import {
   monitorOnce,
   pollDownloadsOnce,
@@ -376,15 +376,15 @@ async function handleApi(
     }
     addActivity({
       kind: "update",
-      message: "Admin triggered container update",
+      message: "Admin triggered background container update",
       userId: auth.user.id,
     });
-    const result = await runHostUpdate();
+    const started = await startHostUpdate();
+    // Return immediately — rebuild recreates this container and would kill a blocking request
     sendJson(res, 200, {
-      ok: result.code === 0,
-      mode: "self",
-      code: result.code,
-      log: result.log.slice(-8000),
+      ok: true,
+      mode: "background",
+      ...started,
     });
     return true;
   }
@@ -395,7 +395,15 @@ async function handleApi(
       sendJson(res, 403, { error: "Admin only" });
       return true;
     }
-    sendJson(res, 200, await canSelfUpdate());
+    const st = await readUpdateStatus();
+    sendJson(res, 200, {
+      ok: st.canUpdate.ok,
+      reason: st.canUpdate.reason,
+      projectDir: st.canUpdate.projectDir,
+      composeHostDir: st.canUpdate.composeHostDir,
+      last: st.last || null,
+      logTail: st.logTail || null,
+    });
     return true;
   }
 

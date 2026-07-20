@@ -157,7 +157,9 @@ mkdir -p "$TV_LIBRARY_HOST" "$DOWNLOADS_HOST" "$INSTALL_DIR/data"
 cat > .compose.env <<EOF
 TV_LIBRARY_HOST="${TV_LIBRARY_HOST}"
 DOWNLOADS_HOST="${DOWNLOADS_HOST}"
+COMPOSE_HOST_DIR=${INSTALL_DIR}
 EOF
+printf '%s\n' "$INSTALL_DIR" > .hostdir
 
 echo "==> Building and starting container…"
 export TV_LIBRARY_HOST DOWNLOADS_HOST
