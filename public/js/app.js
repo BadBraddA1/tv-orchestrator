@@ -96,11 +96,38 @@
         { key: "nzbget_url", label: "NZBGet URL", placeholder: "http://127.0.0.1:6789" },
         { key: "nzbget_user", label: "Username" },
         { key: "nzbget_pass", label: "Password", type: "password", secret: true },
-        { key: "nzbget_category", label: "Category", placeholder: "tv-orch" },
+        { key: "nzbget_category", label: "TV category", placeholder: "tv-orch" },
+        {
+          key: "nzbget_movie_category",
+          label: "Movie category",
+          placeholder: "movie-orch",
+        },
         {
           key: "nzbget_path_prefix",
           label: "NZBGet path prefix (optional)",
           placeholder: "/downloads",
+        },
+      ],
+    },
+    {
+      id: "libraries",
+      title: "Libraries & downloads (host paths)",
+      tipKey: "libraries",
+      fields: [
+        {
+          key: "tv_library_host",
+          label: "TV Shows folder (host)",
+          placeholder: '/mnt/plex/TV Shows',
+        },
+        {
+          key: "movie_library_host",
+          label: "Movies folder (host)",
+          placeholder: "/mnt/plex/Movies",
+        },
+        {
+          key: "downloads_host",
+          label: "NZBGet completed parent (host)",
+          placeholder: "/mnt/plex/rip/completed",
         },
       ],
     },
@@ -124,11 +151,34 @@
       fields: [
         { key: "plex_url", label: "Plex URL", placeholder: "http://127.0.0.1:32400" },
         { key: "plex_token", label: "X-Plex-Token", type: "password", secret: true },
+      ],
+    },
+    {
+      id: "household",
+      title: "Household preferences",
+      tipKey: "household",
+      fields: [
         {
           key: "quality_profile",
           label: "Preferred quality",
           type: "select",
           options: ["1080p", "720p", "any"],
+        },
+        {
+          key: "auto_approve",
+          label: "Auto-approve requests",
+          type: "select",
+          options: ["true", "false"],
+        },
+        {
+          key: "stale_days",
+          label: "Cleanup: stale after (days)",
+          placeholder: "365",
+        },
+        {
+          key: "stale_delete_grace_days",
+          label: "Cleanup: delete grace (days)",
+          placeholder: "2",
         },
       ],
     },
@@ -144,11 +194,6 @@
           type: "password",
           secret: true,
           placeholder: "from themoviedb.org",
-        },
-        {
-          key: "nzbget_movie_category",
-          label: "NZBGet movie category",
-          placeholder: "movie-orch",
         },
       ],
     },
@@ -171,12 +216,23 @@
         { key: "pushover_user_key", label: "Pushover user key", secret: true },
         { key: "pushover_app_token", label: "Pushover app token", type: "password", secret: true },
         { key: "ntfy_topic", label: "Or ntfy topic" },
+        {
+          key: "ntfy_server",
+          label: "ntfy server",
+          placeholder: "https://ntfy.sh",
+        },
       ],
       finish: true,
     },
   ];
 
   const CONNECTION_CARDS = [
+    {
+      id: "libraries",
+      title: "Libraries & downloads",
+      tipKey: "libraries",
+      keys: ["tv_library_host", "movie_library_host", "downloads_host", "nzbget_path_prefix"],
+    },
     {
       id: "nzbget",
       title: "NZBGet",
@@ -186,7 +242,7 @@
         "nzbget_user",
         "nzbget_pass",
         "nzbget_category",
-        "nzbget_path_prefix",
+        "nzbget_movie_category",
       ],
     },
     {
@@ -204,13 +260,24 @@
       id: "plex",
       title: "Plex",
       test: "plex",
-      keys: ["plex_url", "plex_token", "quality_profile"],
+      keys: ["plex_url", "plex_token"],
+    },
+    {
+      id: "household",
+      title: "Household",
+      tipKey: "household",
+      keys: [
+        "quality_profile",
+        "auto_approve",
+        "stale_days",
+        "stale_delete_grace_days",
+      ],
     },
     {
       id: "tmdb",
       title: "TMDB / Movies",
       test: "tmdb",
-      keys: ["tmdb_api_key", "nzbget_movie_category"],
+      keys: ["tmdb_api_key"],
     },
     {
       id: "tautulli",
@@ -222,7 +289,12 @@
       id: "notify",
       title: "Phone alerts",
       tests: ["pushover", "ntfy"],
-      keys: ["pushover_user_key", "pushover_app_token", "ntfy_topic"],
+      keys: [
+        "pushover_user_key",
+        "pushover_app_token",
+        "ntfy_topic",
+        "ntfy_server",
+      ],
     },
   ];
 
@@ -308,11 +380,12 @@
     if (field.type === "select") {
       input = document.createElement("select");
       input.name = field.key;
+      const current = setupValues[field.key] || field.options[0] || "";
       for (const opt of field.options) {
         const o = document.createElement("option");
         o.value = opt;
         o.textContent = opt;
-        if ((setupValues[field.key] || "1080p") === opt) o.selected = true;
+        if (current === opt) o.selected = true;
         input.appendChild(o);
       }
     } else {
@@ -1526,7 +1599,21 @@
       const status = await api("/api/setup/status");
       setupValues = { ...setupValues, ...status.values };
       setupHasSecrets = { ...(status.hasSecrets || {}) };
+      setupTips = status.tips || {};
       connectionsList.replaceChildren();
+
+      if (status.mounts) {
+        const mountNote = document.createElement("p");
+        mountNote.className = "sub";
+        mountNote.style.gridColumn = "1 / -1";
+        mountNote.textContent =
+          `Inside Docker now: TV=${status.mounts.tvLibrary} · Movies=${status.mounts.movieLibrary} · Downloads=${status.mounts.downloads}` +
+          (status.mounts.composeEnvWritable
+            ? " · Saving host paths updates .compose.env (then /update to remount)."
+            : " · Host .compose.env not writable from here — set paths then run ./update.sh on the host.");
+        connectionsList.appendChild(mountNote);
+      }
+
       for (const card of CONNECTION_CARDS) {
         const el = document.createElement("div");
         el.className = "connection-card user-form";
@@ -1535,6 +1622,12 @@
         const h = document.createElement("h2");
         h.textContent = card.title;
         form.appendChild(h);
+        if (card.tipKey && setupTips[card.tipKey]) {
+          const tip = document.createElement("p");
+          tip.className = "sub";
+          tip.textContent = setupTips[card.tipKey];
+          form.appendChild(tip);
+        }
         for (const key of card.keys) {
           const meta = FIELD_META[key] || { key, label: key };
           form.appendChild(buildFieldLabel(meta));
@@ -1544,10 +1637,12 @@
         msg.hidden = true;
         const actions = document.createElement("div");
         actions.className = "toolbar";
+        const services = card.tests || (card.test ? [card.test] : []);
         const testBtn = document.createElement("button");
         testBtn.type = "button";
         testBtn.className = "ghost";
         testBtn.textContent = "Test";
+        if (!services.length) testBtn.hidden = true;
         const saveBtn = document.createElement("button");
         saveBtn.type = "submit";
         saveBtn.textContent = "Save this";
@@ -1569,7 +1664,6 @@
 
         testBtn.addEventListener("click", async () => {
           const payload = collectCard();
-          const services = card.tests || (card.test ? [card.test] : []);
           msg.hidden = false;
           msg.textContent = `Testing ${services.join(", ")}…`;
           const r = await runSetupTests(services, payload);
@@ -1582,14 +1676,19 @@
           msg.hidden = false;
           msg.textContent = "Saving…";
           try {
-            await api("/api/setup/save", {
+            const saved = await api("/api/setup/save", {
               method: "POST",
               body: JSON.stringify(payload),
             });
             const refreshed = await api("/api/setup/status");
             setupHasSecrets = { ...(refreshed.hasSecrets || {}) };
             setupValues = { ...setupValues, ...refreshed.values };
-            msg.textContent = "Saved.";
+            let note = "Saved.";
+            if (saved.composeNote) note = saved.composeNote;
+            if (saved.needsRemount) {
+              note += " Use /update below (or ./update.sh) so Docker remounts.";
+            }
+            msg.textContent = note;
             loadConnections();
           } catch (err) {
             msg.textContent = err.message;

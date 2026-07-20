@@ -106,11 +106,17 @@ import {
   pendingDeleteSummary,
 } from "./services/stale.js";
 
+import {
+  readHostPaths,
+  writeHostPaths,
+} from "./services/composeEnv.js";
+
 const SETUP_KEYS = [
   "nzbget_url",
   "nzbget_user",
   "nzbget_pass",
   "nzbget_category",
+  "nzbget_movie_category",
   "nzbget_path_prefix",
   "nzbgeek_url",
   "nzbgeek_api_key",
@@ -119,13 +125,19 @@ const SETUP_KEYS = [
   "plex_url",
   "plex_token",
   "tmdb_api_key",
-  "nzbget_movie_category",
   "tautulli_url",
   "tautulli_api_key",
   "pushover_user_key",
   "pushover_app_token",
   "ntfy_topic",
+  "ntfy_server",
   "quality_profile",
+  "auto_approve",
+  "stale_days",
+  "stale_delete_grace_days",
+  "tv_library_host",
+  "movie_library_host",
+  "downloads_host",
 ] as const;
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -258,11 +270,13 @@ async function handleApi(
     const saved = getSettings([...SETUP_KEYS]);
     const users = listUsers();
     const admin = users.find((u) => u.role === "admin");
+    const hostFromFile = await readHostPaths();
     const raw: Record<string, string> = {
       nzbget_url: saved.nzbget_url || config.nzbget.url,
       nzbget_user: saved.nzbget_user || config.nzbget.user,
       nzbget_pass: saved.nzbget_pass || config.nzbget.pass,
       nzbget_category: saved.nzbget_category || config.nzbget.category,
+      nzbget_movie_category: saved.nzbget_movie_category || config.nzbget.movieCategory,
       nzbget_path_prefix: saved.nzbget_path_prefix || config.nzbget.pathPrefix,
       nzbgeek_url: saved.nzbgeek_url || config.nzbgeek.url,
       nzbgeek_api_key: saved.nzbgeek_api_key || config.nzbgeek.apiKey,
@@ -271,13 +285,32 @@ async function handleApi(
       plex_url: saved.plex_url || config.plex.url,
       plex_token: saved.plex_token || config.plex.token,
       tmdb_api_key: saved.tmdb_api_key || config.tmdb.apiKey,
-      nzbget_movie_category: saved.nzbget_movie_category || config.nzbget.movieCategory,
       tautulli_url: saved.tautulli_url || config.tautulli.url,
       tautulli_api_key: saved.tautulli_api_key || config.tautulli.apiKey,
       pushover_user_key: saved.pushover_user_key || config.pushover.userKey,
       pushover_app_token: saved.pushover_app_token || config.pushover.appToken,
       ntfy_topic: saved.ntfy_topic || config.ntfy.topic,
+      ntfy_server: saved.ntfy_server || config.ntfy.server,
       quality_profile: saved.quality_profile || config.qualityProfile,
+      auto_approve: saved.auto_approve || (config.autoApprove ? "true" : "false"),
+      stale_days: saved.stale_days || String(config.staleDays),
+      stale_delete_grace_days:
+        saved.stale_delete_grace_days || String(config.staleDeleteGraceDays),
+      tv_library_host:
+        saved.tv_library_host ||
+        hostFromFile.paths.TV_LIBRARY_HOST ||
+        config.hostPaths.tvLibrary ||
+        "",
+      movie_library_host:
+        saved.movie_library_host ||
+        hostFromFile.paths.MOVIE_LIBRARY_HOST ||
+        config.hostPaths.movieLibrary ||
+        "",
+      downloads_host:
+        saved.downloads_host ||
+        hostFromFile.paths.DOWNLOADS_HOST ||
+        config.hostPaths.downloads ||
+        "",
       admin_user: admin?.username || config.adminUser,
     };
     const hasSecrets: Record<string, boolean> = {};
@@ -296,18 +329,28 @@ async function handleApi(
       adminUsername: admin?.username || config.adminUser,
       values,
       hasSecrets,
+      mounts: {
+        tvLibrary: config.tvLibrary,
+        movieLibrary: config.movieLibrary,
+        downloads: config.downloads,
+        composeEnvWritable: hostFromFile.writable,
+        composeEnvPath: hostFromFile.composeEnvPath,
+      },
       tips: {
         admin:
           "Pick the password you’ll use to sign in. This is required before the rest of setup can finish.",
+        libraries:
+          "Host paths on the Proxmox/Mac machine (not inside Docker). Example: TV Shows → /mnt/plex/TV Shows, Movies → /mnt/plex/Movies, Downloads → /mnt/plex/rip/completed (parent of tv-orch + movie-orch). Saving writes .compose.env — then run /update.",
         nzbget:
-          "Open NZBGet → Settings → Security for username/password. Create category tv-orch. " +
-          "DOWNLOADS_HOST must be NZBGet’s completed folder. If DestDir looks like /downloads/…, set Path prefix to /downloads so Orca can find & move files.",
+          "NZBGet Security + Categories tv-orch / movie-orch. Path prefix remaps DestDir onto /media/downloads (e.g. /downloads).",
+        household:
+          "Quality preference, auto-approve requests, and Cleanup stale thresholds for this household.",
         nzbgeek: "NZBGeek → API → copy your Newznab API key (api.nzbgeek.info).",
         nzbfinder: "NZB Finder account → API / Newznab key.",
         plex: "Plex → account → XML or https://support.plex.tv for X-Plex-Token from any plex URL (&X-Plex-Token=).",
         tmdb: "Free API key from themoviedb.org → Settings → API. Used so your household can search/poster movies.",
         tautulli: "Tautulli Settings → Web Interface → API. Used for Now Playing, click-to-see usage, and channel drop-after-watch.",
-        push: "Optional: Pushover user key + app token, or an ntfy topic name.",
+        push: "Optional: Pushover user key + app token, or an ntfy topic (+ server if not ntfy.sh).",
       },
     });
     return true;
@@ -364,6 +407,22 @@ async function handleApi(
       reloadConfigFromSettings(getSettings([...SETUP_KEYS]));
     }
 
+    let composeNote: string | undefined;
+    let needsRemount = false;
+    if (
+      map.tv_library_host != null ||
+      map.movie_library_host != null ||
+      map.downloads_host != null
+    ) {
+      const written = await writeHostPaths({
+        tvLibraryHost: map.tv_library_host,
+        movieLibraryHost: map.movie_library_host,
+        downloadsHost: map.downloads_host,
+      });
+      composeNote = written.message;
+      needsRemount = written.needsRemount;
+    }
+
     let sessionUser: User | null = auth?.user ?? null;
     const adminUser =
       body.admin_user != null ? String(body.admin_user).trim() : "";
@@ -404,6 +463,8 @@ async function handleApi(
     sendJson(res, 200, {
       ok: true,
       complete: isSetupComplete(),
+      needsRemount,
+      composeNote,
       user: sessionUser
         ? {
             id: sessionUser.id,

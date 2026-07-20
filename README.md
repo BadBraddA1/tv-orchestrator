@@ -27,7 +27,7 @@ curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/v1.1.0/
   REPO_REF=v1.1.0 bash
 ```
 
-First open runs a **setup walkthrough** (admin login → stack APIs). Prefer **Admin → Connections** later to edit one service at a time (Test before Save; blank secrets keep existing).
+First open runs a **setup walkthrough** (admin login → libraries/paths → stack APIs → household prefs). Prefer **Admin → Connections & household** later to edit one card at a time (Test before Save; blank secrets keep existing; host path saves update `.compose.env`, then **/update** remounts).
 
 If you see **“Admin required after setup”**, use **Unlock / restart setup** on the login screen with your admin password.
 

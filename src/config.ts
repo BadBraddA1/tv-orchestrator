@@ -25,6 +25,32 @@ function settingOrEnv(settings: Record<string, string>, key: string, envName: st
   return str(envName, fallback);
 }
 
+function settingOrEnvInt(
+  settings: Record<string, string>,
+  key: string,
+  envName: string,
+  fallback: number,
+): number {
+  const raw = settings[key]?.trim();
+  if (raw) {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return int(envName, fallback);
+}
+
+function settingOrEnvBool(
+  settings: Record<string, string>,
+  key: string,
+  envName: string,
+  fallback: boolean,
+): boolean {
+  const raw = settings[key]?.trim()?.toLowerCase();
+  if (raw === "1" || raw === "true" || raw === "yes") return true;
+  if (raw === "0" || raw === "false" || raw === "no") return false;
+  return bool(envName, fallback);
+}
+
 export type AppConfig = {
   port: number;
   dataDir: string;
@@ -58,6 +84,12 @@ export type AppConfig = {
   plex: { url: string; token: string };
   pushover: { userKey: string; appToken: string };
   ntfy: { topic: string; server: string };
+  /** Labels for host-side mounts (written to .compose.env) */
+  hostPaths: {
+    tvLibrary: string;
+    movieLibrary: string;
+    downloads: string;
+  };
 };
 
 function buildConfig(settings: Record<string, string> = {}): AppConfig {
@@ -68,9 +100,14 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
     tvLibrary: resolve(process.cwd(), str("TV_LIBRARY", "./media/tv")),
     movieLibrary: resolve(process.cwd(), str("MOVIE_LIBRARY", "./media/movies")),
     downloads: resolve(process.cwd(), str("DOWNLOADS", "./media/downloads")),
-    autoApprove: bool("AUTO_APPROVE", true),
-    staleDays: int("STALE_DAYS", 365),
-    staleDeleteGraceDays: int("STALE_DELETE_GRACE_DAYS", 2),
+    autoApprove: settingOrEnvBool(settings, "auto_approve", "AUTO_APPROVE", true),
+    staleDays: settingOrEnvInt(settings, "stale_days", "STALE_DAYS", 365),
+    staleDeleteGraceDays: settingOrEnvInt(
+      settings,
+      "stale_delete_grace_days",
+      "STALE_DELETE_GRACE_DAYS",
+      2,
+    ),
     monitorIntervalMs: int("MONITOR_INTERVAL_MS", 120_000),
     importIntervalMs: int("IMPORT_INTERVAL_MS", 30_000),
     adminUser: str("ADMIN_USER", "brad"),
@@ -122,7 +159,16 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
     },
     ntfy: {
       topic: settingOrEnv(settings, "ntfy_topic", "NTFY_TOPIC"),
-      server: settingOrEnv(settings, "ntfy_server", "NTFY_SERVER", "https://ntfy.sh").replace(/\/$/, ""),
+      server: settingOrEnv(settings, "ntfy_server", "NTFY_SERVER", "https://ntfy.sh").replace(
+        /\/$/,
+        "",
+      ),
+    },
+    // Host path labels (for Admin UI / .compose.env) — not the in-container mounts
+    hostPaths: {
+      tvLibrary: settingOrEnv(settings, "tv_library_host", "TV_LIBRARY_HOST"),
+      movieLibrary: settingOrEnv(settings, "movie_library_host", "MOVIE_LIBRARY_HOST"),
+      downloads: settingOrEnv(settings, "downloads_host", "DOWNLOADS_HOST"),
     },
   };
 }
