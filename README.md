@@ -182,8 +182,12 @@ Saved movie inventory is reused until you Build again.
 
 ## Workers
 
-- Every `MONITOR_INTERVAL_MS`: find wanted aired episodes → Newznab → NZBGet
-- Every `IMPORT_INTERVAL_MS`: watch NZBGet history → rename/move → Plex refresh
+- Every `MONITOR_INTERVAL_MS`: due wanted episodes/movies (backoff elapsed) → Newznab → NZBGet
+- Soft misses stay **wanted** with exponential backoff (~10m→24h, up to 12 tries); only give up after that
+- Phone alerts on first soft miss + final give-up (not every attempt)
+- Import waits for the video file (up to 6 polls) before counting as a miss
+- Every `IMPORT_INTERVAL_MS`: NZBGet history → rename/move → Plex refresh
+- **Downloads → Failed** shows hard fails and “retrying” (waiting for next auto try); **Retry** clears backoff now
 
 ## Project layout
 

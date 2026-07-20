@@ -13,6 +13,7 @@ import { notify } from "../services/notify.js";
 import { plexMovieFolder, plexMovieFileName } from "../services/library.js";
 import { refreshMovieLibraries } from "../services/plex.js";
 import { config } from "../config.js";
+import { planSoftFail, clearRetryState } from "../services/durableRetry.js";
 
 export async function monitorMoviesOnce(limit = 3): Promise<void> {
   const wanted = listWantedMovies();
@@ -25,17 +26,14 @@ export async function monitorMoviesOnce(limit = 3): Promise<void> {
       });
       const ranked = rankReleases(releases, movie.quality_profile || config.qualityProfile);
       if (!ranked.length) {
-        updateMovie(movie.id, { status: "failed", error: "No NZB found" });
-        const msg = `No NZB for movie ${label}`;
-        addActivity({ kind: "failed", message: msg });
-        await notify("Movie grab failed", msg);
+        await applyMovieSoftFail(movie, label, "No NZB found yet");
         continue;
       }
 
       let nzbId: number | null = null;
       let chosen = ranked[0]!;
       const attemptErrors: string[] = [];
-      for (const release of ranked.slice(0, 5)) {
+      for (const release of ranked.slice(0, 8)) {
         try {
           nzbId = await nzbget.appendUrl(
             release.link,
@@ -52,11 +50,9 @@ export async function monitorMoviesOnce(limit = 3): Promise<void> {
       }
 
       if (nzbId == null) {
-        const detail = attemptErrors.slice(0, 3).join(" | ") || "all attempts failed";
-        updateMovie(movie.id, { status: "failed", error: detail.slice(0, 500) });
-        const msg = `Movie grab failed ${label}: ${detail}`;
-        addActivity({ kind: "failed", message: msg.slice(0, 500) });
-        await notify("Movie grab failed", msg.slice(0, 900));
+        const detail =
+          attemptErrors.slice(0, 3).join(" | ") || "all NZB append attempts failed";
+        await applyMovieSoftFail(movie, label, detail);
         continue;
       }
 
@@ -65,17 +61,46 @@ export async function monitorMoviesOnce(limit = 3): Promise<void> {
         nzbget_id: nzbId,
         release_title: chosen.title,
         error: null,
+        ...clearRetryState(),
+        import_attempts: 0,
       });
       const msg = `Snatched movie ${label} via ${chosen.indexer}`;
       addActivity({ kind: "snatched", message: msg, meta: { release: chosen.title } });
       await notify("Movie snatched", msg);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
-      updateMovie(movie.id, { status: "failed", error });
-      const msg = `Movie grab error ${label}: ${error}`;
-      addActivity({ kind: "failed", message: msg });
-      await notify("Movie grab failed", msg.slice(0, 900));
+      await applyMovieSoftFail(movie, label, error);
     }
+  }
+}
+
+async function applyMovieSoftFail(
+  movie: { id: string; retry_count?: number },
+  label: string,
+  error: string,
+): Promise<void> {
+  const plan = planSoftFail({
+    label: `movie ${label}`,
+    error,
+    previousRetryCount: movie.retry_count ?? 0,
+  });
+  updateMovie(movie.id, {
+    status: plan.status,
+    error: plan.error,
+    retry_count: plan.retryCount,
+    next_retry_at: plan.nextRetryAt,
+    nzbget_id: null,
+    release_title: null,
+  });
+  addActivity({
+    kind: plan.activityKind,
+    message: plan.activityMessage.slice(0, 500),
+  });
+  if (plan.notify) {
+    await notify(
+      plan.status === "failed" ? "Movie grab gave up" : "Movie grab — retry later",
+      plan.activityMessage.slice(0, 900),
+    );
   }
 }
 
@@ -104,12 +129,12 @@ export async function pollMovieDownloadsOnce(): Promise<void> {
     }
     const hist = history.find((h) => h.NZBID === gid);
     if (!hist) continue;
+    const label = movie.year ? `${movie.title} (${movie.year})` : movie.title;
     if (/success/i.test(hist.Status) || /complete/i.test(hist.Status)) {
       const dest = hist.FinalDir || hist.DestDir;
       try {
         const imported = await importMovieCompleted(movie.id, dest);
         if (imported) {
-          const label = movie.year ? `${movie.title} (${movie.year})` : movie.title;
           const msg = `Imported movie ${label}`;
           addActivity({ kind: "imported", message: msg });
           await notify("Movie ready in Plex", msg);
@@ -117,19 +142,19 @@ export async function pollMovieDownloadsOnce(): Promise<void> {
         }
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
-        updateMovie(movie.id, { status: "failed", error });
-        addActivity({
-          kind: "failed",
-          message: `Movie import failed ${movie.title}: ${error}`,
-        });
-        await notify("Movie import failed", `${movie.title}: ${error}`);
+        const attempts = (movie.import_attempts ?? 0) + 1;
+        if (attempts < 6 && /no video found/i.test(error)) {
+          updateMovie(movie.id, {
+            status: "downloading",
+            import_attempts: attempts,
+            error: `Waiting for file (${attempts}/6): ${error.slice(0, 200)}`,
+          });
+          continue;
+        }
+        await applyMovieSoftFail(movie, label, `Import: ${error}`);
       }
     } else if (/fail|delete|unpack/i.test(hist.Status) && !/success/i.test(hist.Status)) {
-      updateMovie(movie.id, {
-        status: "failed",
-        error: `NZBGet status: ${hist.Status}`,
-      });
-      await notify("Movie download failed", `${movie.title}: NZBGet ${hist.Status}`);
+      await applyMovieSoftFail(movie, label, `NZBGet status: ${hist.Status}`);
     }
   }
 }
@@ -156,6 +181,8 @@ async function importMovieCompleted(movieId: string, destDir: string): Promise<b
     status: "available",
     file_path: destPath,
     error: null,
+    ...clearRetryState(),
+    import_attempts: 0,
   });
   return true;
 }

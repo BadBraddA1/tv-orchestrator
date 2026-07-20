@@ -833,6 +833,9 @@ async function handleApi(
         episode: e.episode,
         title: e.title,
         error: e.error,
+        status: e.status,
+        retryCount: e.retry_count ?? 0,
+        nextRetryAt: e.next_retry_at,
         updatedAt: e.updated_at,
       })),
       movies: listFailedMovies().map((m) => ({
@@ -840,6 +843,9 @@ async function handleApi(
         title: m.title,
         year: m.year,
         error: m.error,
+        status: m.status,
+        retryCount: m.retry_count ?? 0,
+        nextRetryAt: m.next_retry_at,
         updatedAt: m.updated_at,
       })),
     });

@@ -21,6 +21,7 @@ import {
 import { getShowEpisodes } from "../services/tvmaze.js";
 import { refreshTvLibraries } from "../services/plex.js";
 import { config } from "../config.js";
+import { planSoftFail, clearRetryState } from "../services/durableRetry.js";
 
 export async function syncSeriesEpisodes(seriesId: string): Promise<void> {
   const series = getSeriesById(seriesId);
@@ -88,20 +89,14 @@ export async function monitorOnce(limit = 5): Promise<void> {
         ep.quality_profile || config.qualityProfile,
       );
       if (!ranked.length) {
-        updateEpisode(ep.id, {
-          status: "failed",
-          error: "No NZB found",
-        });
-        const msg = `No NZB for ${label}`;
-        addActivity({ kind: "failed", message: msg, seriesId: ep.series_id, episodeId: ep.id });
-        await notify("TV grab failed", msg);
+        await applyEpisodeSoftFail(ep, label, "No NZB found yet");
         continue;
       }
 
       let nzbId: number | null = null;
       let chosen = ranked[0]!;
       const attemptErrors: string[] = [];
-      for (const release of ranked.slice(0, 5)) {
+      for (const release of ranked.slice(0, 8)) {
         try {
           nzbId = await nzbget.appendUrl(
             release.link,
@@ -118,20 +113,8 @@ export async function monitorOnce(limit = 5): Promise<void> {
       }
 
       if (nzbId == null) {
-        const detail = attemptErrors.slice(0, 3).join(" | ") || "all attempts failed";
-        updateEpisode(ep.id, {
-          status: "failed",
-          error: detail.slice(0, 500),
-        });
-        const msg = `Grab failed ${label}: ${detail}`;
-        addActivity({
-          kind: "failed",
-          message: msg.slice(0, 500),
-          seriesId: ep.series_id,
-          episodeId: ep.id,
-          meta: { attempts: attemptErrors },
-        });
-        await notify("TV grab failed", msg.slice(0, 900));
+        const detail = attemptErrors.slice(0, 3).join(" | ") || "all NZB append attempts failed";
+        await applyEpisodeSoftFail(ep, label, detail);
         continue;
       }
 
@@ -140,6 +123,8 @@ export async function monitorOnce(limit = 5): Promise<void> {
         nzbget_id: nzbId,
         release_title: chosen.title,
         error: null,
+        ...clearRetryState(),
+        import_attempts: 0,
       });
       const msg = `Snatched ${label} via ${chosen.indexer}`;
       addActivity({
@@ -152,16 +137,40 @@ export async function monitorOnce(limit = 5): Promise<void> {
       await notify("TV snatched", msg);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
-      updateEpisode(ep.id, { status: "failed", error });
-      const msg = `Grab error ${label}: ${error}`;
-      addActivity({
-        kind: "failed",
-        message: msg,
-        seriesId: ep.series_id,
-        episodeId: ep.id,
-      });
-      await notify("TV grab failed", msg.slice(0, 900));
+      await applyEpisodeSoftFail(ep, label, error);
     }
+  }
+}
+
+async function applyEpisodeSoftFail(
+  ep: { id: string; series_id: string; retry_count?: number },
+  label: string,
+  error: string,
+): Promise<void> {
+  const plan = planSoftFail({
+    label,
+    error,
+    previousRetryCount: ep.retry_count ?? 0,
+  });
+  updateEpisode(ep.id, {
+    status: plan.status,
+    error: plan.error,
+    retry_count: plan.retryCount,
+    next_retry_at: plan.nextRetryAt,
+    nzbget_id: null,
+    release_title: null,
+  });
+  addActivity({
+    kind: plan.activityKind,
+    message: plan.activityMessage.slice(0, 500),
+    seriesId: ep.series_id,
+    episodeId: ep.id,
+  });
+  if (plan.notify) {
+    await notify(
+      plan.status === "failed" ? "TV grab gave up" : "TV grab — retry later",
+      plan.activityMessage.slice(0, 900),
+    );
   }
 }
 
@@ -190,13 +199,14 @@ export async function pollDownloadsOnce(): Promise<void> {
     }
     const hist = history.find((h) => h.NZBID === gid);
     if (!hist) continue;
+    const series = getSeriesById(ep.series_id);
+    const label = `${series?.title || "Show"} S${pad(ep.season)}E${pad(ep.episode)}`;
     if (/success/i.test(hist.Status) || /complete/i.test(hist.Status)) {
       const dest = hist.FinalDir || hist.DestDir;
-      const series = getSeriesById(ep.series_id);
       try {
         const imported = await importCompleted(ep.id, dest);
         if (imported) {
-          const msg = `Imported ${series?.title || "Show"} S${pad(ep.season)}E${pad(ep.episode)}`;
+          const msg = `Imported ${label}`;
           addActivity({
             kind: "imported",
             message: msg,
@@ -208,26 +218,27 @@ export async function pollDownloadsOnce(): Promise<void> {
         }
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
-        updateEpisode(ep.id, { status: "failed", error });
-        addActivity({
-          kind: "failed",
-          message: `Import failed S${pad(ep.season)}E${pad(ep.episode)}: ${error}`,
-          seriesId: ep.series_id,
-          episodeId: ep.id,
-        });
-        await notify(
-          "TV import failed",
-          `Import failed ${series?.title || "Show"} S${pad(ep.season)}E${pad(ep.episode)}: ${error}`,
+        const attempts = (ep.import_attempts ?? 0) + 1;
+        // File often appears a few minutes after NZBGet SUCCESS — wait before hard fail
+        if (attempts < 6 && /no video found/i.test(error)) {
+          updateEpisode(ep.id, {
+            status: "downloading",
+            import_attempts: attempts,
+            error: `Waiting for file (${attempts}/6): ${error.slice(0, 200)}`,
+          });
+          continue;
+        }
+        await applyEpisodeSoftFail(
+          { id: ep.id, series_id: ep.series_id, retry_count: ep.retry_count },
+          label,
+          `Import: ${error}`,
         );
       }
     } else if (/fail|delete|unpack/i.test(hist.Status) && !/success/i.test(hist.Status)) {
-      updateEpisode(ep.id, {
-        status: "failed",
-        error: `NZBGet status: ${hist.Status}`,
-      });
-      await notify(
-        "TV download failed",
-        `${getSeriesById(ep.series_id)?.title || "Show"} S${pad(ep.season)}E${pad(ep.episode)}: NZBGet ${hist.Status}`,
+      await applyEpisodeSoftFail(
+        { id: ep.id, series_id: ep.series_id, retry_count: ep.retry_count },
+        label,
+        `NZBGet status: ${hist.Status}`,
       );
     }
   }
@@ -274,6 +285,8 @@ async function importCompleted(episodeId: string, destDir: string): Promise<bool
     status: "available",
     file_path: destPath,
     error: null,
+    ...clearRetryState(),
+    import_attempts: 0,
   });
   return true;
 }

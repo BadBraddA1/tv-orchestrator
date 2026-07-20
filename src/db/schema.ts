@@ -159,4 +159,48 @@ export function migrate(): void {
     CREATE INDEX IF NOT EXISTS idx_movies_status ON movies(status);
     CREATE INDEX IF NOT EXISTS idx_channel_items_status ON channel_items(channel_id, status);
   `);
+
+  // Durable retry columns (safe to re-run)
+  addColumnIfMissing("episodes", "retry_count", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("episodes", "next_retry_at", "TEXT");
+  addColumnIfMissing("episodes", "import_attempts", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("movies", "retry_count", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("movies", "next_retry_at", "TEXT");
+  addColumnIfMissing("movies", "import_attempts", "INTEGER NOT NULL DEFAULT 0");
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_episodes_next_retry ON episodes(status, next_retry_at);
+    CREATE INDEX IF NOT EXISTS idx_movies_next_retry ON movies(status, next_retry_at);
+  `);
+
+  // One-time: re-queue legacy hard-failed rows into durable retry
+  const migrated = db
+    .prepare(`SELECT value FROM settings WHERE key = 'durable_retry_migrated'`)
+    .get() as { value: string } | undefined;
+  if (migrated?.value !== "1") {
+    const soon = new Date(Date.now() + 5 * 60_000).toISOString();
+    db.prepare(
+      `UPDATE episodes SET status='wanted',
+         retry_count=CASE WHEN COALESCE(retry_count,0)<1 THEN 1 ELSE retry_count END,
+         next_retry_at=COALESCE(next_retry_at, ?),
+         error=COALESCE(error, 'Auto-requeued for durable retry')
+       WHERE status='failed'`,
+    ).run(soon);
+    db.prepare(
+      `UPDATE movies SET status='wanted',
+         retry_count=CASE WHEN COALESCE(retry_count,0)<1 THEN 1 ELSE retry_count END,
+         next_retry_at=COALESCE(next_retry_at, ?),
+         error=COALESCE(error, 'Auto-requeued for durable retry')
+       WHERE status='failed'`,
+    ).run(soon);
+    db.prepare(
+      `INSERT INTO settings (key, value) VALUES ('durable_retry_migrated', '1')
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    ).run();
+  }
+}
+
+function addColumnIfMissing(table: string, column: string, ddl: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
 }

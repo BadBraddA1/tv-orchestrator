@@ -47,6 +47,9 @@ export interface EpisodeRow {
   nzbget_id: number | null;
   release_title: string | null;
   error: string | null;
+  retry_count: number;
+  next_retry_at: string | null;
+  import_attempts: number;
   updated_at: string;
 }
 
@@ -291,6 +294,9 @@ export function upsertEpisode(input: {
     nzbget_id: null,
     release_title: null,
     error: null,
+    retry_count: 0,
+    next_retry_at: null,
+    import_attempts: 0,
     updated_at: ts,
   };
   db.prepare(
@@ -309,15 +315,18 @@ export function listEpisodesForSeries(seriesId: string): EpisodeRow[] {
 }
 
 export function listWantedEpisodes(): Array<EpisodeRow & { series_title: string; quality_profile: string; tvmaze_id: number }> {
+  const now = nowIso();
   return db
     .prepare(
       `SELECT e.*, s.title AS series_title, s.quality_profile, s.tvmaze_id
        FROM episodes e
        JOIN series s ON s.id = e.series_id
-       WHERE s.monitored = 1 AND e.status IN ('wanted', 'failed')
-       ORDER BY (e.airdate IS NULL), e.airdate ASC`,
+       WHERE s.monitored = 1
+         AND e.status = 'wanted'
+         AND (e.next_retry_at IS NULL OR e.next_retry_at <= ?)
+       ORDER BY COALESCE(e.retry_count, 0) ASC, (e.airdate IS NULL), e.airdate ASC`,
     )
-    .all() as Array<EpisodeRow & { series_title: string; quality_profile: string; tvmaze_id: number }>;
+    .all(now) as Array<EpisodeRow & { series_title: string; quality_profile: string; tvmaze_id: number }>;
 }
 
 export function listActiveDownloads(): EpisodeRow[] {
@@ -337,36 +346,49 @@ export function getEpisodeById(id: string): EpisodeRow | undefined {
 export function listFailedEpisodes(): Array<
   EpisodeRow & { series_title: string }
 > {
+  const now = nowIso();
   return db
     .prepare(
       `SELECT e.*, s.title AS series_title
        FROM episodes e
        JOIN series s ON s.id = e.series_id
        WHERE e.status = 'failed'
+          OR (e.status = 'wanted' AND e.next_retry_at IS NOT NULL AND e.next_retry_at > ?)
        ORDER BY e.updated_at DESC
        LIMIT 100`,
     )
-    .all() as Array<EpisodeRow & { series_title: string }>;
+    .all(now) as Array<EpisodeRow & { series_title: string }>;
 }
 
 export function listFailedMovies(): MovieRow[] {
+  const now = nowIso();
   return db
     .prepare(
-      `SELECT * FROM movies WHERE status = 'failed' ORDER BY updated_at DESC LIMIT 100`,
+      `SELECT * FROM movies
+       WHERE status = 'failed'
+          OR (status = 'wanted' AND next_retry_at IS NOT NULL AND next_retry_at > ?)
+       ORDER BY updated_at DESC
+       LIMIT 100`,
     )
-    .all() as MovieRow[];
+    .all(now) as MovieRow[];
 }
 
 /** Reset failed (or stuck) episode → wanted and turn monitoring on. */
 export function retryEpisode(id: string): (EpisodeRow & { series_title: string }) | null {
   const ep = getEpisodeById(id);
-  if (!ep || ep.status !== "failed") return null;
+  if (!ep) return null;
+  if (ep.status !== "failed" && !(ep.status === "wanted" && ep.next_retry_at)) {
+    if (ep.status !== "wanted") return null;
+  }
   setSeriesMonitored(ep.series_id, true);
   updateEpisode(id, {
     status: "wanted",
     error: null,
     nzbget_id: null,
     release_title: null,
+    retry_count: 0,
+    next_retry_at: null,
+    import_attempts: 0,
   });
   const updated = getEpisodeById(id);
   if (!updated) return null;
@@ -379,13 +401,22 @@ export function retryEpisode(id: string): (EpisodeRow & { series_title: string }
 
 export function retryMovie(id: string): MovieRow | null {
   const movie = getMovieById(id);
-  if (!movie || movie.status !== "failed") return null;
+  if (!movie) return null;
+  if (
+    movie.status !== "failed" &&
+    !(movie.status === "wanted" && movie.next_retry_at)
+  ) {
+    if (movie.status !== "wanted") return null;
+  }
   updateMovie(id, {
     status: "wanted",
     error: null,
     nzbget_id: null,
     release_title: null,
     monitored: 1,
+    retry_count: 0,
+    next_retry_at: null,
+    import_attempts: 0,
   });
   return getMovieById(id) || null;
 }
@@ -480,7 +511,14 @@ export function queueEpisodeWanted(input: {
       `SELECT id FROM episodes WHERE series_id = ? AND season = ? AND episode = ?`,
     )
     .get(input.seriesId, input.season, input.episode) as { id: string } | undefined;
-  if (row) updateEpisode(row.id, { status: "wanted", error: null });
+  if (row) {
+    updateEpisode(row.id, {
+      status: "wanted",
+      error: null,
+      retry_count: 0,
+      next_retry_at: null,
+    });
+  }
   return true;
 }
 
@@ -492,13 +530,17 @@ export function updateEpisode(
     nzbget_id: number | null;
     release_title: string | null;
     error: string | null;
+    retry_count: number;
+    next_retry_at: string | null;
+    import_attempts: number;
   }>,
 ): void {
   const current = db.prepare(`SELECT * FROM episodes WHERE id = ?`).get(id) as EpisodeRow;
   if (!current) return;
   db.prepare(
     `UPDATE episodes SET status=@status, file_path=@file_path, nzbget_id=@nzbget_id,
-     release_title=@release_title, error=@error, updated_at=@updated_at WHERE id=@id`,
+     release_title=@release_title, error=@error, retry_count=@retry_count,
+     next_retry_at=@next_retry_at, import_attempts=@import_attempts, updated_at=@updated_at WHERE id=@id`,
   ).run({
     id,
     status: patch.status ?? current.status,
@@ -507,6 +549,16 @@ export function updateEpisode(
     release_title:
       patch.release_title !== undefined ? patch.release_title : current.release_title,
     error: patch.error !== undefined ? patch.error : current.error,
+    retry_count:
+      patch.retry_count !== undefined ? patch.retry_count : current.retry_count ?? 0,
+    next_retry_at:
+      patch.next_retry_at !== undefined
+        ? patch.next_retry_at
+        : current.next_retry_at ?? null,
+    import_attempts:
+      patch.import_attempts !== undefined
+        ? patch.import_attempts
+        : current.import_attempts ?? 0,
     updated_at: nowIso(),
   });
 }
@@ -689,6 +741,9 @@ export interface MovieRow {
   nzbget_id: number | null;
   release_title: string | null;
   error: string | null;
+  retry_count: number;
+  next_retry_at: string | null;
+  import_attempts: number;
   created_at: string;
   updated_at: string;
 }
@@ -759,6 +814,9 @@ export function upsertMovie(input: {
     nzbget_id: null,
     release_title: null,
     error: null,
+    retry_count: 0,
+    next_retry_at: null,
+    import_attempts: 0,
     created_at: ts,
     updated_at: ts,
   };
@@ -778,13 +836,18 @@ export function updateMovie(
     release_title: string | null;
     error: string | null;
     monitored: number;
+    retry_count: number;
+    next_retry_at: string | null;
+    import_attempts: number;
   }>,
 ): void {
   const current = getMovieById(id);
   if (!current) return;
   db.prepare(
     `UPDATE movies SET status=@status, file_path=@file_path, nzbget_id=@nzbget_id,
-     release_title=@release_title, error=@error, monitored=@monitored, updated_at=@updated_at WHERE id=@id`,
+     release_title=@release_title, error=@error, monitored=@monitored,
+     retry_count=@retry_count, next_retry_at=@next_retry_at,
+     import_attempts=@import_attempts, updated_at=@updated_at WHERE id=@id`,
   ).run({
     id,
     status: patch.status ?? current.status,
@@ -794,17 +857,31 @@ export function updateMovie(
       patch.release_title !== undefined ? patch.release_title : current.release_title,
     error: patch.error !== undefined ? patch.error : current.error,
     monitored: patch.monitored !== undefined ? patch.monitored : current.monitored,
+    retry_count:
+      patch.retry_count !== undefined ? patch.retry_count : current.retry_count ?? 0,
+    next_retry_at:
+      patch.next_retry_at !== undefined
+        ? patch.next_retry_at
+        : current.next_retry_at ?? null,
+    import_attempts:
+      patch.import_attempts !== undefined
+        ? patch.import_attempts
+        : current.import_attempts ?? 0,
     updated_at: nowIso(),
   });
 }
 
 export function listWantedMovies(): MovieRow[] {
+  const now = nowIso();
   return db
     .prepare(
-      `SELECT * FROM movies WHERE monitored = 1 AND status IN ('wanted', 'failed')
-       ORDER BY updated_at ASC`,
+      `SELECT * FROM movies
+       WHERE monitored = 1
+         AND status = 'wanted'
+         AND (next_retry_at IS NULL OR next_retry_at <= ?)
+       ORDER BY COALESCE(retry_count, 0) ASC, updated_at ASC`,
     )
-    .all() as MovieRow[];
+    .all(now) as MovieRow[];
 }
 
 export function listActiveMovieDownloads(): MovieRow[] {

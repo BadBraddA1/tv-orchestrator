@@ -1072,11 +1072,14 @@
         const row = document.createElement("div");
         row.className = "row";
         const label = `${e.seriesTitle} S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`;
+        const waiting = e.status === "wanted" && e.nextRetryAt;
         row.innerHTML = `<div class="row-top">
             <strong>${escapeHtml(label)}</strong>
-            <span class="chip err">failed</span>
+            <span class="chip ${waiting ? "warn" : "err"}">${waiting ? "retrying" : "failed"}</span>
           </div>
-          <p class="meta">${e.error ? escapeHtml(e.error) : "TV · retry will search again"}</p>`;
+          <p class="meta">${e.error ? escapeHtml(e.error) : "TV · retry will search again"}${
+            e.nextRetryAt ? ` · next ${new Date(e.nextRetryAt).toLocaleString()}` : ""
+          }</p>`;
         const btn = document.createElement("button");
         btn.className = "ghost";
         btn.textContent = "Retry";
@@ -1099,11 +1102,14 @@
       for (const m of movies) {
         const row = document.createElement("div");
         row.className = "row";
+        const waiting = m.status === "wanted" && m.nextRetryAt;
         row.innerHTML = `<div class="row-top">
             <strong>${escapeHtml(m.title)}${m.year ? ` (${m.year})` : ""}</strong>
-            <span class="chip err">failed</span>
+            <span class="chip ${waiting ? "warn" : "err"}">${waiting ? "retrying" : "failed"}</span>
           </div>
-          <p class="meta">${m.error ? escapeHtml(m.error) : "Movie · retry will search again"}</p>`;
+          <p class="meta">${m.error ? escapeHtml(m.error) : "Movie · retry will search again"}${
+            m.nextRetryAt ? ` · next ${new Date(m.nextRetryAt).toLocaleString()}` : ""
+          }</p>`;
         const btn = document.createElement("button");
         btn.className = "ghost";
         btn.textContent = "Retry";
