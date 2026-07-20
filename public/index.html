@@ -67,6 +67,7 @@
         <nav class="tabs">
           <button type="button" data-tab="search" class="tab active">TV</button>
           <button type="button" data-tab="movies" class="tab">Movies</button>
+          <button type="button" data-tab="movie-library" class="tab">Movie library</button>
           <button type="button" data-tab="channels" class="tab">Channels</button>
           <button type="button" data-tab="library" class="tab">TV library</button>
           <button type="button" data-tab="activity" class="tab">Activity</button>
@@ -92,6 +93,27 @@
           <div id="movieSearchResults" class="poster-grid"></div>
           <h2 class="section-title">Your movie queue</h2>
           <div id="movieQueue" class="series-list"></div>
+        </div>
+
+        <div id="tab-movie-library" class="tab-panel" hidden>
+          <div class="cleanup-hero">
+            <div>
+              <p class="eyebrow">On disk</p>
+              <h2 class="panel-heading">Movie library</h2>
+              <p class="sub">
+                Catalog everything under the Movies mount so you know what’s already in Plex before requesting again.
+              </p>
+            </div>
+            <div class="toolbar">
+              <button type="button" id="movieInventoryBtn">Build movie inventory</button>
+            </div>
+          </div>
+          <p id="movieInventorySummary" class="sub"></p>
+          <form id="movieLibraryFilterForm" class="search-row">
+            <input id="movieLibraryFilter" placeholder="Filter library…" autocomplete="off" />
+            <button type="submit" class="ghost">Filter</button>
+          </form>
+          <div id="movieLibraryList" class="poster-grid"></div>
         </div>
 
         <div id="tab-channels" class="tab-panel" hidden>

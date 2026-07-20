@@ -13,6 +13,11 @@
   const movieSearchInput = document.getElementById("movieSearchInput");
   const movieSearchResults = document.getElementById("movieSearchResults");
   const movieQueue = document.getElementById("movieQueue");
+  const movieInventoryBtn = document.getElementById("movieInventoryBtn");
+  const movieInventorySummary = document.getElementById("movieInventorySummary");
+  const movieLibraryList = document.getElementById("movieLibraryList");
+  const movieLibraryFilter = document.getElementById("movieLibraryFilter");
+  const movieLibraryFilterForm = document.getElementById("movieLibraryFilterForm");
   const channelsList = document.getElementById("channelsList");
   const nowPlaying = document.getElementById("nowPlaying");
   const maintainChannelsBtn = document.getElementById("maintainChannelsBtn");
@@ -359,6 +364,9 @@
       if (tab === "movies") {
         loadMovieQueue();
       }
+      if (tab === "movie-library") {
+        loadMovieLibrary();
+      }
       if (tab === "channels") {
         loadChannels();
       }
@@ -510,6 +518,117 @@
       movieQueue.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     }
   }
+
+  let movieInventoryCache = null;
+
+  function formatBytes(n) {
+    if (n == null || Number.isNaN(n)) return "—";
+    if (n < 1024) return `${n} B`;
+    const units = ["KB", "MB", "GB", "TB"];
+    let v = n;
+    let i = -1;
+    do {
+      v /= 1024;
+      i++;
+    } while (v >= 1024 && i < units.length - 1);
+    return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+  }
+
+  function renderMovieLibrary(filter = "") {
+    if (!movieLibraryList) return;
+    const inv = movieInventoryCache;
+    if (!inv?.movies?.length) {
+      movieLibraryList.innerHTML =
+        "<p class='sub'>No movie inventory yet. Click “Build movie inventory” to catalog /media/movies.</p>";
+      return;
+    }
+    const q = filter.trim().toLowerCase();
+    const rows = inv.movies.filter((m) => {
+      if (!q) return true;
+      return (
+        (m.title || "").toLowerCase().includes(q) ||
+        (m.titleHint || "").toLowerCase().includes(q) ||
+        String(m.year || "").includes(q)
+      );
+    });
+    movieLibraryList.replaceChildren();
+    if (!rows.length) {
+      movieLibraryList.innerHTML = "<p class='sub'>No titles match that filter.</p>";
+      return;
+    }
+    for (const m of rows) {
+      const card = document.createElement("article");
+      card.className = "card";
+      const img = document.createElement("img");
+      img.alt = m.title;
+      if (m.posterUrl) img.src = m.posterUrl;
+      else img.style.display = "none";
+      const body = document.createElement("div");
+      body.className = "card-body";
+      body.innerHTML = `<h3>${escapeHtml(m.title)}</h3>
+        <p class="meta">${m.year || "—"} · ${formatBytes(m.size)}
+          ${m.unmatched ? ' · <span class="chip warn">unmatched</span>' : ' · <span class="chip ok">in library</span>'}</p>
+        <p class="meta">${escapeHtml((m.overview || "").slice(0, 90))}${(m.overview || "").length > 90 ? "…" : ""}</p>`;
+      if (!m.unmatched && m.title) {
+        const usageBtn = document.createElement("button");
+        usageBtn.className = "ghost";
+        usageBtn.textContent = "Usage";
+        usageBtn.addEventListener("click", () =>
+          openUsage(m.title, { tmdbId: m.tmdbId }),
+        );
+        body.appendChild(usageBtn);
+      }
+      card.append(img, body);
+      movieLibraryList.appendChild(card);
+    }
+  }
+
+  async function loadMovieLibrary() {
+    if (!movieInventorySummary || !movieLibraryList) return;
+    movieLibraryList.innerHTML = "<p class='sub'>Loading…</p>";
+    try {
+      movieInventoryCache = await api("/api/movies/inventory");
+      if (movieInventoryCache?.movies?.length) {
+        const when = new Date(movieInventoryCache.scannedAt).toLocaleString();
+        movieInventorySummary.textContent =
+          `${movieInventoryCache.movieCount} movies · ${formatBytes(movieInventoryCache.totalBytes)} · ` +
+          `${movieInventoryCache.matchedCount} matched · ${movieInventoryCache.unmatchedCount} unmatched · scanned ${when}`;
+        renderMovieLibrary(movieLibraryFilter?.value || "");
+      } else {
+        movieInventorySummary.textContent =
+          "No inventory yet. Click “Build movie inventory” to walk the Movies mount and match TMDB.";
+        movieLibraryList.innerHTML =
+          "<p class='sub'>Once built, you’ll see every movie file you already have — so search knows what’s In Plex.</p>";
+      }
+    } catch (err) {
+      movieInventorySummary.textContent = err.message;
+      movieLibraryList.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  movieInventoryBtn?.addEventListener("click", async () => {
+    movieInventoryBtn.disabled = true;
+    movieInventorySummary.textContent =
+      "Scanning Movies folder and matching TMDB (can take a few minutes)…";
+    movieLibraryList.innerHTML = "<p class='sub'>Working…</p>";
+    try {
+      movieInventoryCache = await api("/api/movies/inventory", { method: "POST" });
+      await loadMovieLibrary();
+    } catch (err) {
+      movieInventorySummary.textContent = err.message;
+      movieLibraryList.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    } finally {
+      movieInventoryBtn.disabled = false;
+    }
+  });
+
+  movieLibraryFilterForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    renderMovieLibrary(movieLibraryFilter?.value || "");
+  });
+  movieLibraryFilter?.addEventListener("input", () => {
+    renderMovieLibrary(movieLibraryFilter.value || "");
+  });
 
   movieSearchForm?.addEventListener("submit", async (e) => {
     e.preventDefault();

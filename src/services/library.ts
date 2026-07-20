@@ -123,3 +123,110 @@ export function plexMovieFileName(
   const stem = year ? `${safe} (${year})` : safe;
   return `${stem}${ext}`;
 }
+
+export interface ParsedMovie {
+  titleHint: string;
+  year: number | null;
+  filePath: string;
+  size: number;
+  mtimeMs: number;
+}
+
+const JUNK_TOKENS =
+  /\b(1080p|2160p|720p|480p|bluray|blu-ray|webrip|web-dl|webdl|hdtv|x264|x265|h264|h265|hevc|avc|dts|aac|ac3|truehd|atmos|remux|proper|repack|extended|directors?.cut|unrated|limited|multi|dubbed|subbed|yify|yts|rarbg|internal)\b/gi;
+
+/** Parse Title (Year) or Title.Year.quality from folder or file stem. */
+export function parseMovieHint(
+  raw: string,
+): { titleHint: string; year: number | null } | null {
+  let s = raw
+    .replace(/\.[^.]+$/, "")
+    .replace(/[._]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!s) return null;
+
+  const paren = s.match(/^(.+?)\s*\((\d{4})\)(?:\s|$)/);
+  if (paren) {
+    return {
+      titleHint: paren[1]!.replace(JUNK_TOKENS, " ").replace(/\s+/g, " ").trim(),
+      year: Number(paren[2]),
+    };
+  }
+
+  const yearM = s.match(/^(.*?)[.\s_-](19\d{2}|20\d{2})(?:[.\s_-]|$)/);
+  if (yearM) {
+    const year = Number(yearM[2]);
+    if (year >= 1900 && year <= 2100) {
+      const titleHint = yearM[1]!
+        .replace(JUNK_TOKENS, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (titleHint.length >= 2) return { titleHint, year };
+    }
+  }
+
+  const cleaned = s.replace(JUNK_TOKENS, " ").replace(/\s+/g, " ").trim();
+  return cleaned.length >= 2 ? { titleHint: cleaned, year: null } : null;
+}
+
+/** Walk movie library; prefer ParentDir Title (Year) when it parses. */
+export async function scanMovieFiles(
+  root = config.movieLibrary,
+): Promise<ParsedMovie[]> {
+  const byKey = new Map<string, ParsedMovie>();
+
+  async function walk(dir: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const ent of entries) {
+      const full = join(dir, ent.name);
+      if (ent.name.startsWith(".")) continue;
+      if (ent.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      if (!VIDEO_EXT.has(extname(ent.name).toLowerCase())) continue;
+
+      const parentBase = basename(dir);
+      const fromFolder = parseMovieHint(parentBase);
+      const fromFile = parseMovieHint(ent.name);
+      // Prefer folder when it's a Plex-style Title (Year) and not the library root
+      const useFolder =
+        fromFolder &&
+        fromFolder.year != null &&
+        dir !== root &&
+        parentBase.toLowerCase() !== "movies";
+      const parsed = useFolder ? fromFolder : fromFile || fromFolder;
+      if (!parsed) continue;
+
+      try {
+        const st = await stat(full);
+        const key = `${normalizeMovieKey(parsed.titleHint)}|${parsed.year ?? ""}`;
+        const row: ParsedMovie = {
+          titleHint: parsed.titleHint,
+          year: parsed.year,
+          filePath: full,
+          size: st.size,
+          mtimeMs: st.mtimeMs,
+        };
+        const prev = byKey.get(key);
+        // Keep largest file per title/year (skip samples/extras)
+        if (!prev || row.size > prev.size) byKey.set(key, row);
+      } catch {
+        // skip
+      }
+    }
+  }
+
+  await walk(root);
+  return [...byKey.values()];
+}
+
+function normalizeMovieKey(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}

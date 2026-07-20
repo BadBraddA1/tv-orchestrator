@@ -10,7 +10,7 @@ Household members (especially non-tech partners) requesting TV and movies into P
 
 ## Product Purpose
 
-TV Orchestrator (“orca”) turns a Proxmox media stack into a simple request → grab → import loop for **TV and movies**, plus library inventory, gap fills, and stale cleanup. Success is: anyone in the house finds a title, taps Request, and it appears in Plex — no SSH, no Sonarr/Radarr UI.
+TV Orchestrator (“orca”) turns a Proxmox media stack into a simple request → grab → import loop for **TV and movies**, plus library inventory (shows *and* movies), gap fills, channels/hoppers, and stale cleanup. Success is: anyone in the house finds a title, taps Request, and it appears in Plex — no SSH, no Sonarr/Radarr UI.
 
 ## Brand Personality
 

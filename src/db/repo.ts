@@ -613,6 +613,12 @@ export function upsertMovie(input: {
   const existing = getMovieByTmdb(input.tmdbId);
   const ts = nowIso();
   if (existing) {
+    const monitored =
+      input.monitored === undefined
+        ? existing.monitored
+        : input.monitored
+          ? 1
+          : 0;
     db.prepare(
       `UPDATE movies SET title=@title, year=@year, poster_url=@poster_url, overview=@overview,
        monitored=@monitored, quality_profile=@quality_profile,
@@ -620,10 +626,10 @@ export function upsertMovie(input: {
     ).run({
       id: existing.id,
       title: input.title,
-      year: input.year ?? null,
-      poster_url: input.posterUrl ?? null,
-      overview: input.overview ?? null,
-      monitored: input.monitored === false ? 0 : 1,
+      year: input.year ?? existing.year,
+      poster_url: input.posterUrl ?? existing.poster_url,
+      overview: input.overview ?? existing.overview,
+      monitored,
       quality_profile: input.qualityProfile ?? existing.quality_profile,
       status: input.status ?? null,
       updated_at: ts,

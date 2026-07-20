@@ -85,6 +85,10 @@ import {
   fillInventoryGaps,
 } from "./services/inventory.js";
 import {
+  buildMovieInventory,
+  getLastMovieInventory,
+} from "./services/movieInventory.js";
+import {
   markStaleForDelete,
   cancelPendingDelete,
   processDueDeletes,
@@ -599,10 +603,26 @@ async function handleApi(
     return true;
   }
 
+  if (path === "/api/movies/inventory" && method === "POST") {
+    const report = await buildMovieInventory();
+    sendJson(res, 200, report);
+    return true;
+  }
+
+  if (path === "/api/movies/inventory" && method === "GET") {
+    sendJson(res, 200, getLastMovieInventory());
+    return true;
+  }
+
   if (path === "/api/movies/request" && method === "POST") {
     const body = await readJson<{ tmdbId?: number }>(req);
     if (!body.tmdbId) {
       sendJson(res, 400, { error: "tmdbId required" });
+      return true;
+    }
+    const already = getMovieByTmdb(body.tmdbId);
+    if (already?.status === "available") {
+      sendJson(res, 200, { movie: already, alreadyAvailable: true });
       return true;
     }
     const info = await getMovie(body.tmdbId);
@@ -614,7 +634,9 @@ async function handleApi(
       overview: info.overview || null,
       monitored: true,
       qualityProfile: config.qualityProfile,
-      status: "wanted",
+      status: already?.status === "snatched" || already?.status === "downloading"
+        ? already.status
+        : "wanted",
     });
     const request = createMovieRequest({
       userId: auth.user.id,

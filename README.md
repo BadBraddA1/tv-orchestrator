@@ -165,6 +165,8 @@ Or enter them in the setup walkthrough. **Admin → Send test phone ping** verif
 |-----|---------|
 | TV | TVMaze search + Request shows |
 | Movies | TMDB search + Request movies (wife-friendly one-tap) |
+| Movie library | Full Movies-mount inventory + TMDB match (know what you have) |
+| Channels | 24/7 hoppers (Hot Movies, Cops, Drama) + Tautulli drop-after-watch |
 | TV library | Full disk inventory + missing episodes + grab gaps |
 | Activity | Live trail of requests/snatches/imports/failures |
 | Requests | Who requested what (TV) |
@@ -180,6 +182,16 @@ Or enter them in the setup walkthrough. **Admin → Send test phone ping** verif
 5. Click **Grab all missing** to queue every matched gap as wanted, turn monitoring on, and start NZBGet grabs (phone ping + Activity). Unmatched rows are skipped until names match TVMaze
 
 Saved inventory is reused when you reopen Library until you run Build again.
+
+### Movie library inventory
+
+1. Open **Movie library → Build movie inventory** (needs TMDB key in setup)
+2. Orca walks `/media/movies`, parses `Title (Year)` folders/files, matches **TMDB**, and saves a browseable catalog
+3. Matched titles are marked **available** in the DB (not monitored), so Movies search shows **In Plex** instead of Request
+4. Unmatched rows need a cleaner folder/filename; rebuild after renames
+5. Filter box searches the saved catalog; Usage opens Tautulli history when configured
+
+Saved movie inventory is reused until you Build again.
 
 ## Workers
 
