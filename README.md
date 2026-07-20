@@ -168,7 +168,7 @@ Or enter them in the setup walkthrough. **Admin → Send test phone ping** verif
 | Movie library | Full Movies-mount inventory + TMDB match (know what you have) |
 | Channels | 24/7 hoppers (Hot Movies, Cops, Drama) + Tautulli drop-after-watch |
 | TV library | Full disk inventory + missing episodes + grab gaps |
-| Downloads | Live NZBGet queue + recent history (auto-refreshes) |
+| Downloads | Live NZBGet queue, **Retry** on failed grabs, recent history |
 | Activity | Live trail of requests/snatches/imports/failures |
 | Requests | Who requested what (TV) |
 | Cleanup | Stale unwatched files — mark for delete (2-day grace; spared if watched) |

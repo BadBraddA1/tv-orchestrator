@@ -328,6 +328,76 @@ export function listActiveDownloads(): EpisodeRow[] {
     .all() as EpisodeRow[];
 }
 
+export function getEpisodeById(id: string): EpisodeRow | undefined {
+  return db.prepare(`SELECT * FROM episodes WHERE id = ?`).get(id) as
+    | EpisodeRow
+    | undefined;
+}
+
+export function listFailedEpisodes(): Array<
+  EpisodeRow & { series_title: string }
+> {
+  return db
+    .prepare(
+      `SELECT e.*, s.title AS series_title
+       FROM episodes e
+       JOIN series s ON s.id = e.series_id
+       WHERE e.status = 'failed'
+       ORDER BY e.updated_at DESC
+       LIMIT 100`,
+    )
+    .all() as Array<EpisodeRow & { series_title: string }>;
+}
+
+export function listFailedMovies(): MovieRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM movies WHERE status = 'failed' ORDER BY updated_at DESC LIMIT 100`,
+    )
+    .all() as MovieRow[];
+}
+
+/** Reset failed (or stuck) episode → wanted and turn monitoring on. */
+export function retryEpisode(id: string): (EpisodeRow & { series_title: string }) | null {
+  const ep = getEpisodeById(id);
+  if (!ep || ep.status !== "failed") return null;
+  setSeriesMonitored(ep.series_id, true);
+  updateEpisode(id, {
+    status: "wanted",
+    error: null,
+    nzbget_id: null,
+    release_title: null,
+  });
+  const updated = getEpisodeById(id);
+  if (!updated) return null;
+  const series = getSeriesById(ep.series_id);
+  return {
+    ...updated,
+    series_title: series?.title || "Show",
+  };
+}
+
+export function retryMovie(id: string): MovieRow | null {
+  const movie = getMovieById(id);
+  if (!movie || movie.status !== "failed") return null;
+  updateMovie(id, {
+    status: "wanted",
+    error: null,
+    nzbget_id: null,
+    release_title: null,
+    monitored: 1,
+  });
+  return getMovieById(id) || null;
+}
+
+export function retryAllFailed(): { episodes: number; movies: number } {
+  const eps = listFailedEpisodes();
+  const movies = listFailedMovies();
+  for (const e of eps) retryEpisode(e.id);
+  for (const m of movies) retryMovie(m.id);
+  return { episodes: eps.length, movies: movies.length };
+}
+
 export function findByNzbgetId(nzbId: number): {
   kind: "tv" | "movie";
   label: string;

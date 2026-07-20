@@ -35,8 +35,10 @@
   const downloadsSummary = document.getElementById("downloadsSummary");
   const downloadsStats = document.getElementById("downloadsStats");
   const downloadsQueue = document.getElementById("downloadsQueue");
+  const downloadsFailed = document.getElementById("downloadsFailed");
   const downloadsHistory = document.getElementById("downloadsHistory");
   const refreshDownloadsBtn = document.getElementById("refreshDownloadsBtn");
+  const retryAllFailedBtn = document.getElementById("retryAllFailedBtn");
   const requestList = document.getElementById("requestList");
   const staleList = document.getElementById("staleList");
   const pendingList = document.getElementById("pendingList");
@@ -519,6 +521,25 @@
             <span class="chip ${chip}">${escapeHtml(m.status)}</span>
           </div>
           <p class="meta">${m.error ? escapeHtml(m.error) : m.release_title ? escapeHtml(m.release_title) : "In queue"}</p>`;
+        if (m.status === "failed") {
+          const btn = document.createElement("button");
+          btn.className = "ghost";
+          btn.textContent = "Retry";
+          btn.addEventListener("click", async () => {
+            btn.disabled = true;
+            btn.textContent = "Retrying…";
+            try {
+              await api(`/api/movies/${m.id}/retry`, { method: "POST" });
+              loadMovieQueue();
+              loadActivity();
+            } catch (err) {
+              btn.disabled = false;
+              btn.textContent = "Retry";
+              alert(err.message);
+            }
+          });
+          row.appendChild(btn);
+        }
         movieQueue.appendChild(row);
       }
     } catch (err) {
@@ -932,14 +953,94 @@
     }, 5000);
   }
 
+  async function renderFailedDownloads() {
+    if (!downloadsFailed) return;
+    try {
+      const failed = await api("/api/failed");
+      const eps = failed.episodes || [];
+      const movies = failed.movies || [];
+      const total = eps.length + movies.length;
+      if (retryAllFailedBtn) {
+        retryAllFailedBtn.hidden = total === 0;
+      }
+      downloadsFailed.replaceChildren();
+      if (!total) {
+        downloadsFailed.innerHTML =
+          "<p class='sub'>No failed grabs — nice.</p>";
+        return;
+      }
+      for (const e of eps) {
+        const row = document.createElement("div");
+        row.className = "row";
+        const label = `${e.seriesTitle} S${String(e.season).padStart(2, "0")}E${String(e.episode).padStart(2, "0")}`;
+        row.innerHTML = `<div class="row-top">
+            <strong>${escapeHtml(label)}</strong>
+            <span class="chip err">failed</span>
+          </div>
+          <p class="meta">${e.error ? escapeHtml(e.error) : "TV · retry will search again"}</p>`;
+        const btn = document.createElement("button");
+        btn.className = "ghost";
+        btn.textContent = "Retry";
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          btn.textContent = "Retrying…";
+          try {
+            await api(`/api/episodes/${e.id}/retry`, { method: "POST" });
+            renderFailedDownloads();
+            loadActivity();
+          } catch (err) {
+            btn.disabled = false;
+            btn.textContent = "Retry";
+            alert(err.message);
+          }
+        });
+        row.appendChild(btn);
+        downloadsFailed.appendChild(row);
+      }
+      for (const m of movies) {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.innerHTML = `<div class="row-top">
+            <strong>${escapeHtml(m.title)}${m.year ? ` (${m.year})` : ""}</strong>
+            <span class="chip err">failed</span>
+          </div>
+          <p class="meta">${m.error ? escapeHtml(m.error) : "Movie · retry will search again"}</p>`;
+        const btn = document.createElement("button");
+        btn.className = "ghost";
+        btn.textContent = "Retry";
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          btn.textContent = "Retrying…";
+          try {
+            await api(`/api/movies/${m.id}/retry`, { method: "POST" });
+            renderFailedDownloads();
+            loadMovieQueue();
+            loadActivity();
+          } catch (err) {
+            btn.disabled = false;
+            btn.textContent = "Retry";
+            alert(err.message);
+          }
+        });
+        row.appendChild(btn);
+        downloadsFailed.appendChild(row);
+      }
+    } catch (err) {
+      downloadsFailed.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+      if (retryAllFailedBtn) retryAllFailedBtn.hidden = true;
+    }
+  }
+
   async function loadDownloads(showLoading) {
     if (!downloadsQueue || !downloadsHistory) return;
     if (showLoading) {
       downloadsQueue.innerHTML = "<p class='sub'>Talking to NZBGet…</p>";
       downloadsHistory.innerHTML = "";
+      if (downloadsFailed) downloadsFailed.innerHTML = "<p class='sub'>Loading…</p>";
       if (downloadsSummary) downloadsSummary.textContent = "";
       if (downloadsStats) downloadsStats.replaceChildren();
     }
+    void renderFailedDownloads();
     try {
       const snap = await api("/api/downloads");
       if (!snap.ok) {
@@ -1052,6 +1153,23 @@
   }
 
   refreshDownloadsBtn?.addEventListener("click", () => loadDownloads(true));
+
+  retryAllFailedBtn?.addEventListener("click", async () => {
+    retryAllFailedBtn.disabled = true;
+    retryAllFailedBtn.textContent = "Retrying…";
+    try {
+      const r = await api("/api/failed/retry-all", { method: "POST" });
+      await renderFailedDownloads();
+      loadMovieQueue();
+      loadActivity();
+      alert(`Queued ${r.episodes} episode(s) and ${r.movies} movie(s) for retry`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      retryAllFailedBtn.disabled = false;
+      retryAllFailedBtn.textContent = "Retry all";
+    }
+  });
 
   async function loadActivity() {
     const items = await api("/api/activity");

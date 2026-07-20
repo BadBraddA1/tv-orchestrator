@@ -35,6 +35,11 @@ import {
   ensureDefaultChannels,
   countActiveHopperItems,
   findByNzbgetId,
+  listFailedEpisodes,
+  listFailedMovies,
+  retryEpisode,
+  retryMovie,
+  retryAllFailed,
   type User,
 } from "./db/repo.js";
 import {
@@ -791,6 +796,80 @@ async function handleApi(
   if (path === "/api/downloads" && method === "GET") {
     const snap = await getDownloadsSnapshot((nzbId) => findByNzbgetId(nzbId));
     sendJson(res, 200, snap);
+    return true;
+  }
+
+  if (path === "/api/failed" && method === "GET") {
+    sendJson(res, 200, {
+      episodes: listFailedEpisodes().map((e) => ({
+        id: e.id,
+        seriesId: e.series_id,
+        seriesTitle: e.series_title,
+        season: e.season,
+        episode: e.episode,
+        title: e.title,
+        error: e.error,
+        updatedAt: e.updated_at,
+      })),
+      movies: listFailedMovies().map((m) => ({
+        id: m.id,
+        title: m.title,
+        year: m.year,
+        error: m.error,
+        updatedAt: m.updated_at,
+      })),
+    });
+    return true;
+  }
+
+  if (path === "/api/failed/retry-all" && method === "POST") {
+    const result = retryAllFailed();
+    addActivity({
+      kind: "retry",
+      message: `Retry all: ${result.episodes} episode(s), ${result.movies} movie(s)`,
+      userId: auth.user.id,
+    });
+    await monitorOnce(Math.min(12, Math.max(1, result.episodes)));
+    await monitorMoviesOnce(Math.min(8, Math.max(1, result.movies)));
+    sendJson(res, 200, result);
+    return true;
+  }
+
+  if (path.match(/^\/api\/episodes\/[^/]+\/retry$/) && method === "POST") {
+    const id = path.split("/")[3] || "";
+    const ep = retryEpisode(id);
+    if (!ep) {
+      sendJson(res, 404, { error: "Failed episode not found" });
+      return true;
+    }
+    const label = `${ep.series_title} S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")}`;
+    addActivity({
+      kind: "retry",
+      message: `Retry ${label}`,
+      seriesId: ep.series_id,
+      episodeId: ep.id,
+      userId: auth.user.id,
+    });
+    await monitorOnce(3);
+    sendJson(res, 200, { episode: ep });
+    return true;
+  }
+
+  if (path.match(/^\/api\/movies\/[^/]+\/retry$/) && method === "POST") {
+    const id = path.split("/")[3] || "";
+    const movie = retryMovie(id);
+    if (!movie) {
+      sendJson(res, 404, { error: "Failed movie not found" });
+      return true;
+    }
+    const label = movie.year ? `${movie.title} (${movie.year})` : movie.title;
+    addActivity({
+      kind: "retry",
+      message: `Retry movie ${label}`,
+      userId: auth.user.id,
+    });
+    await monitorMoviesOnce(3);
+    sendJson(res, 200, { movie });
     return true;
   }
 
