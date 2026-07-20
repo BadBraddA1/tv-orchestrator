@@ -125,6 +125,10 @@ Paste Newznab API keys:
 - `PLEX_URL=http://plex-host:32400`
 - `PLEX_TOKEN=...` (from plex.tv / account)
 
+## UI look
+
+Cleanup uses a **broadcast-ops** visual language: teal accent, amber for stale/grace countdowns, size meters, and pending cards with progress rings. See `PRODUCT.md` / `DESIGN.md`. Hard-refresh after update.
+
 ### Cleanup / offload
 
 **Cleanup** tab lists episodes not watched in `STALE_DAYS` (default 365) or never watched.

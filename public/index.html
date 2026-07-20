@@ -4,6 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>TV Orchestrator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/css/app.css" />
   </head>
   <body>
@@ -98,14 +101,21 @@
         </div>
 
         <div id="tab-cleanup" class="tab-panel" hidden>
-          <p id="staleSummary" class="sub"></p>
+          <div class="cleanup-hero">
+            <div>
+              <p class="eyebrow">Disk reclaim</p>
+              <h2 class="panel-heading">Cleanup</h2>
+              <p id="staleSummary" class="sub"></p>
+            </div>
+            <div class="stat-rail" id="cleanupStats" aria-live="polite"></div>
+          </div>
           <div class="toolbar admin-only" hidden>
             <button type="button" id="markSelectedBtn">Mark selected (delete in 2d)</button>
             <button type="button" id="markAllStaleBtn" class="ghost">Mark all listed</button>
             <button type="button" id="processDueBtn" class="ghost">Process due now</button>
           </div>
           <h2 class="section-title" id="pendingTitle" hidden>Pending deletes</h2>
-          <div id="pendingList" class="stale-list"></div>
+          <div id="pendingList" class="stale-grid"></div>
           <h2 class="section-title">Stale on disk</h2>
           <div id="staleList" class="stale-list"></div>
         </div>
@@ -136,6 +146,6 @@
         </div>
       </section>
     </div>
-    <script src="/js/app.js?v=stale-delete1"></script>
+    <script src="/js/app.js?v=cleanup-ui1"></script>
   </body>
 </html>
