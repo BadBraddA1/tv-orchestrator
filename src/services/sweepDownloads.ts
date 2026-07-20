@@ -113,7 +113,10 @@ async function importTvFile(
     if (resolve(video) === resolve(dest)) return "skipped";
     try {
       const st = await stat(dest);
-      if (st.size > MIN_BYTES) return "skipped";
+      if (st.size > MIN_BYTES) {
+        await removeCompletedLeftover(video);
+        return "skipped";
+      }
     } catch {
       // dest free
     }
@@ -244,6 +247,17 @@ async function importMovieFile(video: string): Promise<"moved" | "skipped"> {
           ...clearRetryState(),
           import_attempts: 0,
         });
+      }
+      // Prefer larger/newer grab: replace library file then clear completed
+      try {
+        const src = await stat(video);
+        if (src.size > st.size * 1.05) {
+          await moveOrCopyVideo(video, dest);
+          await tryRemoveEmptyParents(video, config.downloads);
+          return "moved";
+        }
+      } catch {
+        // fall through to leftover cleanup
       }
       await removeCompletedLeftover(video);
       return "skipped";

@@ -183,15 +183,23 @@ export async function moveOrCopyVideo(
   video: string,
   destPath: string,
 ): Promise<void> {
+  // Replace existing destination if present (upgrade / re-grab)
+  try {
+    await unlink(destPath);
+  } catch {
+    // dest did not exist
+  }
   try {
     await rename(video, destPath);
+    return;
   } catch {
-    await copyFile(video, destPath);
-    try {
-      await unlink(video);
-    } catch {
-      // leave source if delete fails (cross-device copy already done)
-    }
+    // cross-device or SMB rename refusal — copy then delete source
+  }
+  await copyFile(video, destPath);
+  try {
+    await unlink(video);
+  } catch {
+    // leave source if delete fails (copy already done)
   }
 }
 

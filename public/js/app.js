@@ -1251,9 +1251,10 @@
           ? `${(snap.downloadRateKbps / 1024).toFixed(1)} MB/s`
           : `${snap.downloadRateKbps} KB/s`;
       if (downloadsSummary) {
+        const mountWarn = snap.mounts?.warning ? ` · ⚠ ${snap.mounts.warning}` : "";
         downloadsSummary.textContent = snap.paused
-          ? `Paused · ${snap.queue.length} in queue · ${Math.round(snap.remainingMB)} MB remaining`
-          : `${rate} · ${snap.queue.length} in queue · ${Math.round(snap.remainingMB)} MB remaining`;
+          ? `Paused · ${snap.queue.length} in queue · ${Math.round(snap.remainingMB)} MB remaining${mountWarn}`
+          : `${rate} · ${snap.queue.length} in queue · ${Math.round(snap.remainingMB)} MB remaining${mountWarn}`;
       }
 
       if (downloadsStats) {

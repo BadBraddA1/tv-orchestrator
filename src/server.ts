@@ -108,6 +108,7 @@ import {
   readHostPaths,
   writeHostPaths,
 } from "./services/composeEnv.js";
+import { mountsDiagnostic } from "./services/mountsDiagnostic.js";
 
 const SETUP_KEYS = [
   "nzbget_url",
@@ -248,6 +249,7 @@ async function handleApi(
   if (path === "/api/health") {
     const nzb = await nzbgetPing();
     const alerts = notifyConfigured();
+    const mounts = await mountsDiagnostic();
     sendJson(res, 200, {
       ok: true,
       nzbget: nzb,
@@ -260,6 +262,7 @@ async function handleApi(
         nzbgeek: Boolean(config.nzbgeek.apiKey),
         nzbfinder: Boolean(config.nzbfinder.apiKey),
       },
+      mounts,
     });
     return true;
   }
@@ -886,7 +889,8 @@ async function handleApi(
 
   if (path === "/api/downloads" && method === "GET") {
     const snap = await getDownloadsSnapshot((nzbId) => findByNzbgetId(nzbId));
-    sendJson(res, 200, snap);
+    const mounts = await mountsDiagnostic();
+    sendJson(res, 200, { ...snap, mounts });
     return true;
   }
 
@@ -1229,8 +1233,13 @@ export async function startServer(): Promise<void> {
   setInterval(() => {
     void pollDownloadsOnce().catch((e) => console.warn("[import]", e));
     void pollMovieDownloadsOnce().catch((e) => console.warn("[movie-import]", e));
-    void sweepDownloadsOnce(25).catch((e) => console.warn("[sweep]", e));
+    void sweepDownloadsOnce(80).catch((e) => console.warn("[sweep]", e));
   }, config.importIntervalMs);
+
+  // Drain any completed backlog shortly after boot
+  setTimeout(() => {
+    void sweepDownloads(0).catch((e) => console.warn("[sweep-boot]", e));
+  }, 20_000);
 
   setInterval(() => {
     void maintainChannelsOnce().catch((e) => console.warn("[channels]", e));
