@@ -172,7 +172,7 @@ Or enter them in the setup walkthrough. **Admin → Send test phone ping** verif
 | Activity | Live trail of requests/snatches/imports/failures |
 | Requests | Who requested what (TV) |
 | Cleanup | Stale unwatched files — mark for delete (2-day grace; spared if watched) |
-| Admin | Add users, health check, run monitor |
+| Admin | Users, **per-service Connections** (test before save; leave secrets blank to keep), health, update |
 
 ### Library inventory
 
@@ -193,6 +193,13 @@ Saved inventory is reused when you reopen Library until you run Build again.
 5. Filter box searches the saved catalog; Usage opens Tautulli history when configured
 
 Saved movie inventory is reused until you Build again.
+
+### Connections (Admin)
+
+- **Admin → Connections**: edit NZBGet, indexers, Plex, TMDB, Tautulli, or alerts one card at a time
+- **Test** checks the API **without saving**
+- **Save this** only writes that card’s fields
+- Password/API key fields stay blank when already saved — leave blank to keep the old value (walkthrough does the same)
 
 ## Workers
 

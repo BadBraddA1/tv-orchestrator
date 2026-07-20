@@ -51,6 +51,7 @@
   const userForm = document.getElementById("userForm");
   const userList = document.getElementById("userList");
   const healthBox = document.getElementById("healthBox");
+  const connectionsList = document.getElementById("connectionsList");
   const scanBtn = document.getElementById("scanBtn");
   const monitorBtn = document.getElementById("monitorBtn");
   const updateBtn = document.getElementById("updateBtn");
@@ -69,6 +70,7 @@
 
   let me = null;
   let setupValues = {};
+  let setupHasSecrets = {};
   let setupTips = {};
   let setupStep = 0;
   let forceSetup = false;
@@ -80,39 +82,41 @@
       tipKey: "admin",
       fields: [
         { key: "admin_user", label: "Admin username", placeholder: "brad" },
-        { key: "admin_pass", label: "Admin password", type: "password" },
+        { key: "admin_pass", label: "Admin password", type: "password", secret: true },
       ],
     },
     {
       id: "nzbget",
       title: "NZBGet on the R620",
       tipKey: "nzbget",
+      test: "nzbget",
       fields: [
         { key: "nzbget_url", label: "NZBGet URL", placeholder: "http://127.0.0.1:6789" },
         { key: "nzbget_user", label: "Username" },
-        { key: "nzbget_pass", label: "Password", type: "password" },
+        { key: "nzbget_pass", label: "Password", type: "password", secret: true },
         { key: "nzbget_category", label: "Category", placeholder: "tv-orch" },
       ],
-      test: true,
     },
     {
       id: "indexers",
       title: "Usenet indexers",
       tipKey: "nzbgeek",
+      tests: ["nzbgeek", "nzbfinder"],
       fields: [
         { key: "nzbgeek_url", label: "NZBGeek Newznab URL", placeholder: "https://api.nzbgeek.info" },
-        { key: "nzbgeek_api_key", label: "NZBGeek API key", type: "password" },
+        { key: "nzbgeek_api_key", label: "NZBGeek API key", type: "password", secret: true },
         { key: "nzbfinder_url", label: "NZB Finder Newznab URL", placeholder: "https://nzbfinder.ws" },
-        { key: "nzbfinder_api_key", label: "NZB Finder API key", type: "password" },
+        { key: "nzbfinder_api_key", label: "NZB Finder API key", type: "password", secret: true },
       ],
     },
     {
       id: "plex",
       title: "Plex",
       tipKey: "plex",
+      test: "plex",
       fields: [
         { key: "plex_url", label: "Plex URL", placeholder: "http://127.0.0.1:32400" },
-        { key: "plex_token", label: "X-Plex-Token", type: "password" },
+        { key: "plex_token", label: "X-Plex-Token", type: "password", secret: true },
         {
           key: "quality_profile",
           label: "Preferred quality",
@@ -125,11 +129,13 @@
       id: "tmdb",
       title: "Movies (TMDB)",
       tipKey: "tmdb",
+      test: "tmdb",
       fields: [
         {
           key: "tmdb_api_key",
           label: "TMDB API key (free)",
           type: "password",
+          secret: true,
           placeholder: "from themoviedb.org",
         },
         {
@@ -143,23 +149,74 @@
       id: "tautulli",
       title: "Tautulli (usage)",
       tipKey: "tautulli",
+      test: "tautulli",
       fields: [
         { key: "tautulli_url", label: "Tautulli URL", placeholder: "http://10.0.0.x:8181" },
-        { key: "tautulli_api_key", label: "Tautulli API key", type: "password" },
+        { key: "tautulli_api_key", label: "Tautulli API key", type: "password", secret: true },
       ],
     },
     {
       id: "notify",
       title: "Phone alerts (optional)",
       tipKey: "push",
+      tests: ["pushover", "ntfy"],
       fields: [
-        { key: "pushover_user_key", label: "Pushover user key" },
-        { key: "pushover_app_token", label: "Pushover app token", type: "password" },
+        { key: "pushover_user_key", label: "Pushover user key", secret: true },
+        { key: "pushover_app_token", label: "Pushover app token", type: "password", secret: true },
         { key: "ntfy_topic", label: "Or ntfy topic" },
       ],
       finish: true,
     },
   ];
+
+  const CONNECTION_CARDS = [
+    {
+      id: "nzbget",
+      title: "NZBGet",
+      test: "nzbget",
+      keys: ["nzbget_url", "nzbget_user", "nzbget_pass", "nzbget_category"],
+    },
+    {
+      id: "indexers",
+      title: "Indexers",
+      tests: ["nzbgeek", "nzbfinder"],
+      keys: [
+        "nzbgeek_url",
+        "nzbgeek_api_key",
+        "nzbfinder_url",
+        "nzbfinder_api_key",
+      ],
+    },
+    {
+      id: "plex",
+      title: "Plex",
+      test: "plex",
+      keys: ["plex_url", "plex_token", "quality_profile"],
+    },
+    {
+      id: "tmdb",
+      title: "TMDB / Movies",
+      test: "tmdb",
+      keys: ["tmdb_api_key", "nzbget_movie_category"],
+    },
+    {
+      id: "tautulli",
+      title: "Tautulli",
+      test: "tautulli",
+      keys: ["tautulli_url", "tautulli_api_key"],
+    },
+    {
+      id: "notify",
+      title: "Phone alerts",
+      tests: ["pushover", "ntfy"],
+      keys: ["pushover_user_key", "pushover_app_token", "ntfy_topic"],
+    },
+  ];
+
+  const FIELD_META = {};
+  for (const step of STEPS) {
+    for (const f of step.fields) FIELD_META[f.key] = f;
+  }
 
   async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -222,49 +279,94 @@
 
     setupForm.replaceChildren();
     for (const field of step.fields) {
-      const label = document.createElement("label");
-      label.append(field.label);
-      let input;
-      if (field.type === "select") {
-        input = document.createElement("select");
-        input.name = field.key;
-        for (const opt of field.options) {
-          const o = document.createElement("option");
-          o.value = opt;
-          o.textContent = opt;
-          if ((setupValues[field.key] || "1080p") === opt) o.selected = true;
-          input.appendChild(o);
-        }
-      } else {
-        input = document.createElement("input");
-        input.name = field.key;
-        input.type = field.type || "text";
-        if (field.placeholder) input.placeholder = field.placeholder;
-        input.value = setupValues[field.key] || "";
-      }
-      label.appendChild(input);
-      setupForm.appendChild(label);
+      setupForm.appendChild(buildFieldLabel(field));
     }
 
     setupBack.hidden = setupStep === 0;
-    setupTest.hidden = !step.test;
-    setupNext.textContent = step.finish ? "Finish & start using" : "Continue";
+    setupTest.hidden = !(step.test || (step.tests && step.tests.length));
+    setupNext.textContent = step.finish ? "Finish & start using" : "Save & continue";
     setupMsg.hidden = true;
+  }
+
+  function buildFieldLabel(field) {
+    const label = document.createElement("label");
+    label.append(field.label);
+    let input;
+    if (field.type === "select") {
+      input = document.createElement("select");
+      input.name = field.key;
+      for (const opt of field.options) {
+        const o = document.createElement("option");
+        o.value = opt;
+        o.textContent = opt;
+        if ((setupValues[field.key] || "1080p") === opt) o.selected = true;
+        input.appendChild(o);
+      }
+    } else {
+      input = document.createElement("input");
+      input.name = field.key;
+      input.type = field.type || "text";
+      input.autocomplete = field.secret ? "new-password" : "off";
+      if (field.secret && setupHasSecrets[field.key]) {
+        input.placeholder = "Saved — leave blank to keep";
+        input.value = "";
+      } else if (field.placeholder) {
+        input.placeholder = field.placeholder;
+        input.value = setupValues[field.key] || "";
+      } else {
+        input.value = setupValues[field.key] || "";
+      }
+    }
+    label.appendChild(input);
+    return label;
   }
 
   function collectSetupFields() {
     const fd = new FormData(setupForm);
-    for (const [k, v] of fd.entries()) setupValues[k] = String(v);
+    for (const [k, v] of fd.entries()) {
+      const val = String(v);
+      const meta = FIELD_META[k];
+      if (meta?.secret && !val.trim()) continue;
+      setupValues[k] = val;
+    }
+  }
+
+  function payloadForKeys(keys) {
+    const payload = {};
+    for (const key of keys) {
+      const meta = FIELD_META[key];
+      const val = (setupValues[key] || "").trim();
+      if (meta?.secret && !val) continue;
+      if (setupValues[key] != null) payload[key] = setupValues[key];
+    }
+    return payload;
+  }
+
+  function payloadForStep(step) {
+    return payloadForKeys(step.fields.map((f) => f.key));
+  }
+
+  async function runSetupTests(services, values) {
+    const messages = [];
+    for (const service of services) {
+      const r = await api("/api/setup/test", {
+        method: "POST",
+        body: JSON.stringify({ service, ...values }),
+      });
+      messages.push(r.message || `${service} ${r.ok ? "ok" : "failed"}`);
+      if (!r.ok) return { ok: false, message: messages.join(" · ") };
+    }
+    return { ok: true, message: messages.join(" · ") };
   }
 
   async function start() {
     const status = await api("/api/setup/status");
     setupValues = { ...status.values };
+    setupHasSecrets = { ...(status.hasSecrets || {}) };
     setupTips = status.tips || {};
 
     if (!status.complete || forceSetup) {
       forceSetup = false;
-      // Prefer login first if they already have an admin account flow; still allow open wizard
       try {
         me = await api("/api/auth/me");
         showSetup();
@@ -290,45 +392,51 @@
 
   setupTest.addEventListener("click", async () => {
     collectSetupFields();
+    const step = STEPS[setupStep];
+    const services = step.tests || (step.test ? [step.test] : []);
+    if (!services.length) return;
     setupMsg.hidden = false;
-    setupMsg.textContent = "Testing NZBGet…";
-    try {
-      const r = await api("/api/setup/test-nzbget", {
-        method: "POST",
-        body: JSON.stringify(setupValues),
-      });
-      setupMsg.textContent = r.ok
-        ? "NZBGet connected."
-        : "Could not reach NZBGet — check URL/user/pass (and firewall from this container).";
-    } catch (err) {
-      setupMsg.textContent = err.message;
-    }
+    setupMsg.textContent = `Testing ${services.join(", ")}…`;
+    const r = await runSetupTests(services, payloadForStep(step));
+    setupMsg.textContent = r.message;
   });
 
   setupNext.addEventListener("click", async () => {
     collectSetupFields();
     const step = STEPS[setupStep];
     setupMsg.hidden = false;
-    setupMsg.textContent = "Saving…";
+    setupMsg.textContent = "Saving this step…";
     try {
       if (step.id === "admin") {
         const user = (setupValues.admin_user || "").trim();
         const pass = setupValues.admin_pass || "";
-        if (!user || pass.length < 6) {
-          setupMsg.textContent = "Pick a username and a password (6+ characters).";
+        if (!user || (!pass && !setupHasSecrets.admin_pass)) {
+          setupMsg.textContent =
+            "Pick a username and a password (6+ characters), or leave password blank if already set.";
+          return;
+        }
+        if (pass && pass.length < 6) {
+          setupMsg.textContent = "Admin password must be at least 6 characters.";
           return;
         }
       }
-      const payload = { ...setupValues };
-      if (step.id !== "admin") {
-        delete payload.admin_user;
-        delete payload.admin_pass;
+      const payload = payloadForStep(step);
+      if (step.id === "admin") {
+        payload.admin_user = setupValues.admin_user;
+        if (setupValues.admin_pass) payload.admin_pass = setupValues.admin_pass;
       }
       if (step.finish) payload.finish = true;
       const r = await api("/api/setup/save", {
         method: "POST",
         body: JSON.stringify(payload),
       });
+      try {
+        const status = await api("/api/setup/status");
+        setupHasSecrets = { ...(status.hasSecrets || {}) };
+        setupValues = { ...setupValues, ...status.values };
+      } catch {
+        /* ignore */
+      }
       if (r.user) me = r.user;
       if (step.finish) {
         setupMsg.textContent = "Setup complete.";
@@ -342,23 +450,13 @@
     } catch (err) {
       const msg = err.message || String(err);
       setupMsg.textContent = msg;
-      if (msg.includes("Admin required") || msg.includes("SETUP_LOCKED")) {
+      if (/SETUP_LOCKED|Admin required/i.test(msg)) {
         setupMsg.textContent =
-          msg + " Use Sign in below, or unlock with your admin password (often brad / changeme).";
-        showLoginForUnlock();
+          "Setup was locked. Sign in with your admin account, or use Unlock setup below with brad / changeme if you never set a password.";
       }
     }
   });
 
-  function showLoginForUnlock() {
-    hideAll();
-    loginView.hidden = false;
-    loginError.hidden = false;
-    loginError.textContent =
-      "Setup was locked. Sign in with your admin account, or use Unlock setup below with brad / changeme if you never set a password.";
-    const unlock = document.getElementById("unlockSetup");
-    if (unlock) unlock.hidden = false;
-  }
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
@@ -427,6 +525,7 @@
         setupStep = 0;
         const status = await api("/api/setup/status");
         setupValues = { ...status.values };
+        setupHasSecrets = { ...(status.hasSecrets || {}) };
         setupTips = status.tips || {};
         showSetup();
       } catch (err) {
@@ -1401,7 +1500,93 @@
     }
   });
 
+  async function loadConnections() {
+    if (!connectionsList) return;
+    connectionsList.innerHTML = "<p class='sub'>Loading…</p>";
+    try {
+      const status = await api("/api/setup/status");
+      setupValues = { ...setupValues, ...status.values };
+      setupHasSecrets = { ...(status.hasSecrets || {}) };
+      connectionsList.replaceChildren();
+      for (const card of CONNECTION_CARDS) {
+        const el = document.createElement("div");
+        el.className = "connection-card user-form";
+        const form = document.createElement("form");
+        form.dataset.card = card.id;
+        const h = document.createElement("h2");
+        h.textContent = card.title;
+        form.appendChild(h);
+        for (const key of card.keys) {
+          const meta = FIELD_META[key] || { key, label: key };
+          form.appendChild(buildFieldLabel(meta));
+        }
+        const msg = document.createElement("p");
+        msg.className = "sub conn-msg";
+        msg.hidden = true;
+        const actions = document.createElement("div");
+        actions.className = "toolbar";
+        const testBtn = document.createElement("button");
+        testBtn.type = "button";
+        testBtn.className = "ghost";
+        testBtn.textContent = "Test";
+        const saveBtn = document.createElement("button");
+        saveBtn.type = "submit";
+        saveBtn.textContent = "Save this";
+        actions.append(testBtn, saveBtn);
+        form.append(actions, msg);
+
+        const collectCard = () => {
+          const fd = new FormData(form);
+          const payload = {};
+          for (const [k, v] of fd.entries()) {
+            const val = String(v);
+            const meta = FIELD_META[k];
+            if (meta?.secret && !val.trim()) continue;
+            payload[k] = val;
+            setupValues[k] = val;
+          }
+          return payload;
+        };
+
+        testBtn.addEventListener("click", async () => {
+          const payload = collectCard();
+          const services = card.tests || (card.test ? [card.test] : []);
+          msg.hidden = false;
+          msg.textContent = `Testing ${services.join(", ")}…`;
+          const r = await runSetupTests(services, payload);
+          msg.textContent = r.message;
+        });
+
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const payload = collectCard();
+          msg.hidden = false;
+          msg.textContent = "Saving…";
+          try {
+            await api("/api/setup/save", {
+              method: "POST",
+              body: JSON.stringify(payload),
+            });
+            const refreshed = await api("/api/setup/status");
+            setupHasSecrets = { ...(refreshed.hasSecrets || {}) };
+            setupValues = { ...setupValues, ...refreshed.values };
+            msg.textContent = "Saved.";
+            loadConnections();
+          } catch (err) {
+            msg.textContent = err.message;
+          }
+        });
+
+        el.appendChild(form);
+        connectionsList.appendChild(el);
+      }
+    } catch (err) {
+      connectionsList.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
   async function loadAdmin() {
+    await loadConnections();
     const users = await api("/api/users");
     userList.replaceChildren();
     for (const u of users) {

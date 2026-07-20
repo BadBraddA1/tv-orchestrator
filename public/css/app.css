@@ -489,6 +489,21 @@ button.linkish {
   margin: 0;
 }
 
+.connections-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.connection-card .toolbar {
+  margin-top: 0.75rem;
+}
+
+.connection-card .conn-msg {
+  margin-top: 0.5rem;
+}
+
 .stale-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

@@ -57,6 +57,7 @@ import {
 } from "./services/tvmaze.js";
 import { notify, notifyConfigured } from "./services/notify.js";
 import { ping as nzbgetPing, getDownloadsSnapshot } from "./services/nzbget.js";
+import { testSetupService, SECRET_SETUP_KEYS } from "./services/setupTests.js";
 import {
   fetchAllEpisodesWithWatch,
   plexConfigured,
@@ -252,31 +253,43 @@ async function handleApi(
     const saved = getSettings([...SETUP_KEYS]);
     const users = listUsers();
     const admin = users.find((u) => u.role === "admin");
+    const raw: Record<string, string> = {
+      nzbget_url: saved.nzbget_url || config.nzbget.url,
+      nzbget_user: saved.nzbget_user || config.nzbget.user,
+      nzbget_pass: saved.nzbget_pass || config.nzbget.pass,
+      nzbget_category: saved.nzbget_category || config.nzbget.category,
+      nzbgeek_url: saved.nzbgeek_url || config.nzbgeek.url,
+      nzbgeek_api_key: saved.nzbgeek_api_key || config.nzbgeek.apiKey,
+      nzbfinder_url: saved.nzbfinder_url || config.nzbfinder.url,
+      nzbfinder_api_key: saved.nzbfinder_api_key || config.nzbfinder.apiKey,
+      plex_url: saved.plex_url || config.plex.url,
+      plex_token: saved.plex_token || config.plex.token,
+      tmdb_api_key: saved.tmdb_api_key || config.tmdb.apiKey,
+      nzbget_movie_category: saved.nzbget_movie_category || config.nzbget.movieCategory,
+      tautulli_url: saved.tautulli_url || config.tautulli.url,
+      tautulli_api_key: saved.tautulli_api_key || config.tautulli.apiKey,
+      pushover_user_key: saved.pushover_user_key || config.pushover.userKey,
+      pushover_app_token: saved.pushover_app_token || config.pushover.appToken,
+      ntfy_topic: saved.ntfy_topic || config.ntfy.topic,
+      quality_profile: saved.quality_profile || config.qualityProfile,
+      admin_user: admin?.username || config.adminUser,
+    };
+    const hasSecrets: Record<string, boolean> = {};
+    const values: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (SECRET_SETUP_KEYS.has(k)) {
+        hasSecrets[k] = Boolean(v);
+        values[k] = ""; // never re-echo secrets into the form
+      } else {
+        values[k] = v || "";
+      }
+    }
     sendJson(res, 200, {
       complete: isSetupComplete(),
       hasAdmin: Boolean(admin),
       adminUsername: admin?.username || config.adminUser,
-      values: {
-        nzbget_url: saved.nzbget_url || config.nzbget.url,
-        nzbget_user: saved.nzbget_user || config.nzbget.user,
-        nzbget_pass: saved.nzbget_pass || config.nzbget.pass,
-        nzbget_category: saved.nzbget_category || config.nzbget.category,
-        nzbgeek_url: saved.nzbgeek_url || config.nzbgeek.url,
-        nzbgeek_api_key: saved.nzbgeek_api_key || config.nzbgeek.apiKey,
-        nzbfinder_url: saved.nzbfinder_url || config.nzbfinder.url,
-        nzbfinder_api_key: saved.nzbfinder_api_key || config.nzbfinder.apiKey,
-        plex_url: saved.plex_url || config.plex.url,
-        plex_token: saved.plex_token || config.plex.token,
-        tmdb_api_key: saved.tmdb_api_key || config.tmdb.apiKey,
-        nzbget_movie_category: saved.nzbget_movie_category || config.nzbget.movieCategory,
-        tautulli_url: saved.tautulli_url || config.tautulli.url,
-        tautulli_api_key: saved.tautulli_api_key || config.tautulli.apiKey,
-        pushover_user_key: saved.pushover_user_key || config.pushover.userKey,
-        pushover_app_token: saved.pushover_app_token || config.pushover.appToken,
-        ntfy_topic: saved.ntfy_topic || config.ntfy.topic,
-        quality_profile: saved.quality_profile || config.qualityProfile,
-        admin_user: admin?.username || config.adminUser,
-      },
+      values,
+      hasSecrets,
       tips: {
         admin:
           "Pick the password you’ll use to sign in. This is required before the rest of setup can finish.",
@@ -332,10 +345,16 @@ async function handleApi(
     const body = await readJson<Record<string, unknown>>(req);
     const map: Record<string, string> = {};
     for (const key of SETUP_KEYS) {
-      if (body[key] != null) map[key] = String(body[key]).trim();
+      if (body[key] == null) continue;
+      const v = String(body[key]).trim();
+      // Leave blank secrets alone so re-opening setup doesn't wipe keys
+      if (SECRET_SETUP_KEYS.has(key) && v === "") continue;
+      map[key] = v;
     }
-    setSettings(map);
-    reloadConfigFromSettings(getSettings([...SETUP_KEYS]));
+    if (Object.keys(map).length) {
+      setSettings(map);
+      reloadConfigFromSettings(getSettings([...SETUP_KEYS]));
+    }
 
     let sessionUser: User | null = auth?.user ?? null;
     const adminUser =
@@ -395,18 +414,23 @@ async function handleApi(
     return true;
   }
 
-  if (path === "/api/setup/test-nzbget" && method === "POST") {
+  if (path === "/api/setup/test" && method === "POST") {
     const body = await readJson<Record<string, string>>(req);
-    if (body.nzbget_url) {
-      setSettings({
-        nzbget_url: body.nzbget_url,
-        nzbget_user: body.nzbget_user || "",
-        nzbget_pass: body.nzbget_pass || "",
-      });
-      reloadConfigFromSettings(getSettings([...SETUP_KEYS]));
+    const service = (body.service || "").trim();
+    if (!service) {
+      sendJson(res, 400, { error: "service required", ok: false });
+      return true;
     }
-    const ok = await nzbgetPing();
-    sendJson(res, 200, { ok });
+    const result = await testSetupService(service, body);
+    sendJson(res, 200, result);
+    return true;
+  }
+
+  if (path === "/api/setup/test-nzbget" && method === "POST") {
+    // Back-compat: test only — does not save
+    const body = await readJson<Record<string, string>>(req);
+    const result = await testSetupService("nzbget", body);
+    sendJson(res, 200, { ok: result.ok, message: result.message });
     return true;
   }
 
