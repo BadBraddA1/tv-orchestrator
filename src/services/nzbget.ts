@@ -132,6 +132,8 @@ export interface NzbgetHistoryItem {
   DestDir: string;
   FinalDir: string;
   Category: string;
+  FileSizeMB?: number;
+  HistoryTime?: number;
 }
 
 export async function history(limit = 50): Promise<NzbgetHistoryItem[]> {
@@ -141,14 +143,140 @@ export async function history(limit = 50): Promise<NzbgetHistoryItem[]> {
 
 export interface NzbgetGroup {
   NZBID: number;
+  NZBName?: string;
+  NZBNicename?: string;
   Status: string;
+  Category?: string;
   RemainingSizeMB: number;
   DownloadedSizeMB: number;
   FileSizeMB: number;
+  RemainingFileCount?: number;
+  ActiveDownloads?: number;
+  DownloadRate?: number;
+  MaxPriority?: number;
 }
 
 export async function listGroups(): Promise<NzbgetGroup[]> {
   return (await nzbgetCall<NzbgetGroup[]>("listgroups", [0])) || [];
+}
+
+export interface NzbgetStatus {
+  DownloadRate: number;
+  DownloadPaused: boolean;
+  RemainingSizeMB: number;
+  DownloadedSizeMB: number;
+  DownloadLimit: number;
+  UpTimeSec: number;
+  ServerStandBy: boolean;
+  PostJobCount: number;
+  ArticleCacheMB?: number;
+  FreeDiskSpaceMB?: number;
+  QueueSizeMB?: number;
+}
+
+export async function getStatus(): Promise<NzbgetStatus> {
+  return nzbgetCall<NzbgetStatus>("status");
+}
+
+export interface QueueItemView {
+  nzbId: number;
+  name: string;
+  category: string;
+  status: string;
+  fileSizeMB: number;
+  downloadedMB: number;
+  remainingMB: number;
+  percent: number;
+  orcaLabel: string | null;
+  orcaKind: "tv" | "movie" | null;
+}
+
+export interface DownloadsSnapshot {
+  ok: boolean;
+  error?: string;
+  paused: boolean;
+  downloadRateKbps: number;
+  remainingMB: number;
+  freeDiskSpaceMB: number | null;
+  queue: QueueItemView[];
+  recentHistory: Array<{
+    nzbId: number;
+    name: string;
+    status: string;
+    category: string;
+    fileSizeMB: number;
+    when: string | null;
+  }>;
+}
+
+function groupName(g: NzbgetGroup): string {
+  return (g.NZBNicename || g.NZBName || `NZB #${g.NZBID}`).replace(/\.nzb$/i, "");
+}
+
+function percentDone(g: NzbgetGroup): number {
+  const total = g.FileSizeMB || 0;
+  if (total <= 0) return 0;
+  const done = Math.max(0, Math.min(total, g.DownloadedSizeMB || total - (g.RemainingSizeMB || 0)));
+  return Math.round((done / total) * 1000) / 10;
+}
+
+/** Live NZBGet queue + recent history for the UI. */
+export async function getDownloadsSnapshot(resolveLabel?: (nzbId: number) => {
+  label: string;
+  kind: "tv" | "movie";
+} | null): Promise<DownloadsSnapshot> {
+  try {
+    const [groups, hist, st] = await Promise.all([
+      listGroups(),
+      history(20),
+      getStatus(),
+    ]);
+    const queue: QueueItemView[] = (groups || []).map((g) => {
+      const hit = resolveLabel?.(g.NZBID) || null;
+      return {
+        nzbId: g.NZBID,
+        name: groupName(g),
+        category: g.Category || "",
+        status: g.Status || "QUEUED",
+        fileSizeMB: g.FileSizeMB || 0,
+        downloadedMB: g.DownloadedSizeMB || 0,
+        remainingMB: g.RemainingSizeMB || 0,
+        percent: percentDone(g),
+        orcaLabel: hit?.label || null,
+        orcaKind: hit?.kind || null,
+      };
+    });
+    return {
+      ok: true,
+      paused: Boolean(st.DownloadPaused),
+      downloadRateKbps: Math.round((st.DownloadRate || 0) / 1024),
+      remainingMB: st.RemainingSizeMB || 0,
+      freeDiskSpaceMB:
+        typeof st.FreeDiskSpaceMB === "number" ? st.FreeDiskSpaceMB : null,
+      queue,
+      recentHistory: (hist || []).map((h) => ({
+        nzbId: h.NZBID,
+        name: (h.Name || `NZB #${h.NZBID}`).replace(/\.nzb$/i, ""),
+        status: h.Status,
+        category: h.Category || "",
+        fileSizeMB: h.FileSizeMB || 0,
+        when: h.HistoryTime
+          ? new Date(h.HistoryTime * 1000).toISOString()
+          : null,
+      })),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      paused: false,
+      downloadRateKbps: 0,
+      remainingMB: 0,
+      freeDiskSpaceMB: null,
+      queue: [],
+      recentHistory: [],
+    };
+  }
 }
 
 export async function ping(): Promise<boolean> {

@@ -32,6 +32,11 @@
   const inventoryBtn = document.getElementById("inventoryBtn");
   const fillGapsBtn = document.getElementById("fillGapsBtn");
   const activityList = document.getElementById("activityList");
+  const downloadsSummary = document.getElementById("downloadsSummary");
+  const downloadsStats = document.getElementById("downloadsStats");
+  const downloadsQueue = document.getElementById("downloadsQueue");
+  const downloadsHistory = document.getElementById("downloadsHistory");
+  const refreshDownloadsBtn = document.getElementById("refreshDownloadsBtn");
   const requestList = document.getElementById("requestList");
   const staleList = document.getElementById("staleList");
   const pendingList = document.getElementById("pendingList");
@@ -360,6 +365,7 @@
       document.querySelectorAll(".tab-panel").forEach((p) => {
         p.hidden = p.id !== `tab-${tab}`;
       });
+      if (tab !== "downloads") stopDownloadsPoll();
       if (tab === "library") loadLibrary();
       if (tab === "movies") {
         loadMovieQueue();
@@ -371,6 +377,7 @@
         loadChannels();
       }
       if (tab === "activity") loadActivity();
+      if (tab === "downloads") loadDownloads(true);
       if (tab === "requests") loadRequests();
       if (tab === "cleanup") loadStale();
       if (tab === "admin") loadAdmin();
@@ -903,6 +910,148 @@
       libraryList.appendChild(row);
     }
   }
+
+  let downloadsTimer = null;
+
+  function stopDownloadsPoll() {
+    if (downloadsTimer) {
+      clearInterval(downloadsTimer);
+      downloadsTimer = null;
+    }
+  }
+
+  function startDownloadsPoll() {
+    stopDownloadsPoll();
+    downloadsTimer = setInterval(() => {
+      const panel = document.getElementById("tab-downloads");
+      if (!panel || panel.hidden) {
+        stopDownloadsPoll();
+        return;
+      }
+      loadDownloads(false);
+    }, 5000);
+  }
+
+  async function loadDownloads(showLoading) {
+    if (!downloadsQueue || !downloadsHistory) return;
+    if (showLoading) {
+      downloadsQueue.innerHTML = "<p class='sub'>Talking to NZBGet…</p>";
+      downloadsHistory.innerHTML = "";
+      if (downloadsSummary) downloadsSummary.textContent = "";
+      if (downloadsStats) downloadsStats.replaceChildren();
+    }
+    try {
+      const snap = await api("/api/downloads");
+      if (!snap.ok) {
+        if (downloadsSummary) {
+          downloadsSummary.textContent =
+            snap.error || "Could not reach NZBGet — check URL/credentials in setup.";
+        }
+        downloadsQueue.innerHTML = `<p class="error">${escapeHtml(snap.error || "NZBGet offline")}</p>`;
+        downloadsHistory.replaceChildren();
+        stopDownloadsPoll();
+        return;
+      }
+
+      const rate =
+        snap.downloadRateKbps >= 1024
+          ? `${(snap.downloadRateKbps / 1024).toFixed(1)} MB/s`
+          : `${snap.downloadRateKbps} KB/s`;
+      if (downloadsSummary) {
+        downloadsSummary.textContent = snap.paused
+          ? `Paused · ${snap.queue.length} in queue · ${Math.round(snap.remainingMB)} MB remaining`
+          : `${rate} · ${snap.queue.length} in queue · ${Math.round(snap.remainingMB)} MB remaining`;
+      }
+
+      if (downloadsStats) {
+        downloadsStats.replaceChildren();
+        const tiles = [
+          {
+            label: "Speed",
+            value: snap.paused ? "Paused" : rate,
+            cls: snap.paused ? "warn" : "ok",
+          },
+          { label: "In queue", value: String(snap.queue.length), cls: "" },
+          {
+            label: "Left",
+            value: `${Math.round(snap.remainingMB)} MB`,
+            cls: "",
+          },
+        ];
+        if (snap.freeDiskSpaceMB != null) {
+          tiles.push({
+            label: "Free disk",
+            value: `${Math.round(snap.freeDiskSpaceMB)} MB`,
+            cls: snap.freeDiskSpaceMB < 5000 ? "warn" : "ok",
+          });
+        }
+        for (const t of tiles) {
+          const el = document.createElement("div");
+          el.className = `stat-tile ${t.cls}`.trim();
+          el.innerHTML = `<span class="stat-label">${escapeHtml(t.label)}</span>
+            <span class="stat-value">${escapeHtml(t.value)}</span>`;
+          downloadsStats.appendChild(el);
+        }
+      }
+
+      downloadsQueue.replaceChildren();
+      if (!snap.queue.length) {
+        downloadsQueue.innerHTML =
+          "<p class='sub'>Queue is empty — nothing downloading right now.</p>";
+      } else {
+        for (const g of snap.queue) {
+          const row = document.createElement("div");
+          row.className = "row download-row";
+          const label = g.orcaLabel || g.name;
+          const chip =
+            g.status === "DOWNLOADING"
+              ? "ok"
+              : g.status === "PAUSED" || g.status === "QUEUED"
+                ? "warn"
+                : "";
+          const kind = g.orcaKind
+            ? `<span class="chip">${escapeHtml(g.orcaKind)}</span>`
+            : "";
+          row.innerHTML = `<div class="row-top">
+              <strong>${escapeHtml(label)}</strong>
+              <span class="chip ${chip}">${escapeHtml(g.status)}</span>
+            </div>
+            <p class="meta">${kind} ${escapeHtml(g.category || "—")} · ${g.percent}% · ${Math.round(g.downloadedMB)} / ${Math.round(g.fileSizeMB)} MB · left ${Math.round(g.remainingMB)} MB</p>
+            <div class="progress" aria-hidden="true"><span style="width:${Math.min(100, g.percent)}%"></span></div>
+            ${g.orcaLabel && g.orcaLabel !== g.name ? `<p class="meta">${escapeHtml(g.name)}</p>` : ""}`;
+          downloadsQueue.appendChild(row);
+        }
+      }
+
+      downloadsHistory.replaceChildren();
+      if (!snap.recentHistory.length) {
+        downloadsHistory.innerHTML = "<p class='sub'>No recent NZBGet history.</p>";
+      } else {
+        for (const h of snap.recentHistory) {
+          const row = document.createElement("div");
+          row.className = "row";
+          const ok = /SUCCESS|GOOD/i.test(h.status);
+          const bad = /FAILURE|DELETED|WARNING/i.test(h.status);
+          row.innerHTML = `<div class="row-top">
+              <strong>${escapeHtml(h.name)}</strong>
+              <span class="chip ${ok ? "ok" : bad ? "err" : ""}">${escapeHtml(h.status)}</span>
+            </div>
+            <p class="meta">${escapeHtml(h.category || "—")} · ${Math.round(h.fileSizeMB)} MB${
+              h.when ? ` · ${new Date(h.when).toLocaleString()}` : ""
+            }</p>`;
+          downloadsHistory.appendChild(row);
+        }
+      }
+
+      startDownloadsPoll();
+    } catch (err) {
+      if (downloadsSummary) downloadsSummary.textContent = err.message;
+      downloadsQueue.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+      stopDownloadsPoll();
+    }
+  }
+
+  refreshDownloadsBtn?.addEventListener("click", () => loadDownloads(true));
 
   async function loadActivity() {
     const items = await api("/api/activity");

@@ -70,6 +70,7 @@
           <button type="button" data-tab="movie-library" class="tab">Movie library</button>
           <button type="button" data-tab="channels" class="tab">Channels</button>
           <button type="button" data-tab="library" class="tab">TV library</button>
+          <button type="button" data-tab="downloads" class="tab">Downloads</button>
           <button type="button" data-tab="activity" class="tab">Activity</button>
           <button type="button" data-tab="requests" class="tab">Requests</button>
           <button type="button" data-tab="cleanup" class="tab">Cleanup</button>
@@ -142,6 +143,25 @@
           </div>
           <p id="inventorySummary" class="sub"></p>
           <div id="libraryList" class="series-list"></div>
+        </div>
+
+        <div id="tab-downloads" class="tab-panel" hidden>
+          <div class="cleanup-hero">
+            <div>
+              <p class="eyebrow">NZBGet</p>
+              <h2 class="panel-heading">Downloads</h2>
+              <p class="sub">Live queue from NZBGet — what orca (and anything else) is working on right now.</p>
+            </div>
+            <div class="toolbar">
+              <button type="button" id="refreshDownloadsBtn" class="ghost">Refresh</button>
+            </div>
+          </div>
+          <p id="downloadsSummary" class="sub"></p>
+          <div id="downloadsStats" class="stat-rail" aria-live="polite"></div>
+          <h2 class="section-title">Queue</h2>
+          <div id="downloadsQueue" class="series-list"></div>
+          <h2 class="section-title">Recent history</h2>
+          <div id="downloadsHistory" class="series-list"></div>
         </div>
 
         <div id="tab-activity" class="tab-panel" hidden>

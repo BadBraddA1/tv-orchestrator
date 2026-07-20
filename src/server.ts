@@ -34,6 +34,7 @@ import {
   listChannelItems,
   ensureDefaultChannels,
   countActiveHopperItems,
+  findByNzbgetId,
   type User,
 } from "./db/repo.js";
 import {
@@ -50,7 +51,7 @@ import {
   yearFromPremiered,
 } from "./services/tvmaze.js";
 import { notify, notifyConfigured } from "./services/notify.js";
-import { ping as nzbgetPing } from "./services/nzbget.js";
+import { ping as nzbgetPing, getDownloadsSnapshot } from "./services/nzbget.js";
 import {
   fetchAllEpisodesWithWatch,
   plexConfigured,
@@ -784,6 +785,12 @@ async function handleApi(
 
   if (path === "/api/activity" && method === "GET") {
     sendJson(res, 200, listActivity(150));
+    return true;
+  }
+
+  if (path === "/api/downloads" && method === "GET") {
+    const snap = await getDownloadsSnapshot((nzbId) => findByNzbgetId(nzbId));
+    sendJson(res, 200, snap);
     return true;
   }
 

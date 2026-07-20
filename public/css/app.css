@@ -459,6 +459,27 @@ button.linkish {
   background: var(--ok);
 }
 
+.download-row .progress {
+  margin-top: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: oklch(0.22 0.02 250);
+  overflow: hidden;
+}
+
+.download-row .progress > span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, oklch(0.65 0.14 210), oklch(0.78 0.12 185));
+  transition: width 400ms var(--ease);
+}
+
+.download-row .row-top {
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
 .stale-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

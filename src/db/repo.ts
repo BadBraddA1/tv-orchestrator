@@ -328,6 +328,45 @@ export function listActiveDownloads(): EpisodeRow[] {
     .all() as EpisodeRow[];
 }
 
+export function findByNzbgetId(nzbId: number): {
+  kind: "tv" | "movie";
+  label: string;
+} | null {
+  const movie = db
+    .prepare(`SELECT title, year FROM movies WHERE nzbget_id = ?`)
+    .get(nzbId) as { title: string; year: number | null } | undefined;
+  if (movie) {
+    return {
+      kind: "movie",
+      label: movie.year ? `${movie.title} (${movie.year})` : movie.title,
+    };
+  }
+  const ep = db
+    .prepare(
+      `SELECT e.season, e.episode, e.title AS ep_title, s.title AS series_title
+       FROM episodes e JOIN series s ON s.id = e.series_id
+       WHERE e.nzbget_id = ?`,
+    )
+    .get(nzbId) as
+    | {
+        season: number;
+        episode: number;
+        ep_title: string | null;
+        series_title: string;
+      }
+    | undefined;
+  if (ep) {
+    const s = String(ep.season).padStart(2, "0");
+    const e = String(ep.episode).padStart(2, "0");
+    const bit = ep.ep_title ? ` — ${ep.ep_title}` : "";
+    return {
+      kind: "tv",
+      label: `${ep.series_title} S${s}E${e}${bit}`,
+    };
+  }
+  return null;
+}
+
 export function setSeriesMonitored(seriesId: string, monitored: boolean): void {
   db.prepare(`UPDATE series SET monitored = ?, updated_at = ? WHERE id = ?`).run(
     monitored ? 1 : 0,
