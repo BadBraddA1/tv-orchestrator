@@ -73,6 +73,15 @@ export async function fetchAllEpisodesWithWatch(): Promise<PlexWatchItem[]> {
   return out;
 }
 
+export async function listMovieLibrarySections(): Promise<Array<{ key: string; title: string }>> {
+  const data = (await plexGet("/library/sections")) as {
+    MediaContainer?: { Directory?: Array<{ key: string; title: string; type: string }> };
+  };
+  return (data.MediaContainer?.Directory || [])
+    .filter((d) => d.type === "movie")
+    .map((d) => ({ key: d.key, title: d.title }));
+}
+
 export async function refreshTvLibraries(): Promise<void> {
   if (!(await plexConfigured())) return;
   try {
@@ -82,5 +91,17 @@ export async function refreshTvLibraries(): Promise<void> {
     }
   } catch (err) {
     console.warn("[plex] refresh failed", err);
+  }
+}
+
+export async function refreshMovieLibraries(): Promise<void> {
+  if (!(await plexConfigured())) return;
+  try {
+    const sections = await listMovieLibrarySections();
+    for (const section of sections) {
+      await plexGet(`/library/sections/${section.key}/refresh`);
+    }
+  } catch (err) {
+    console.warn("[plex] movie refresh failed", err);
   }
 }

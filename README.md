@@ -1,15 +1,15 @@
 # TV Orchestrator
 
-Overseerr-style **household TV request portal** + grab/import brain for your **Dell R620 / Proxmox** setup.
+Overseerr-style **household TV + movie request portal** + grab/import brain for your **Dell R620 / Proxmox** setup.
 
-- Family searches and requests shows (auto-approve)
+- Family searches and requests **TV shows** (TVMaze) or **movies** (TMDB)
 - App finds NZBs on **NZBGeek** + **NZB Finder**
-- Sends downloads to **NZBGet** (keep NZBGet running)
-- Renames/moves into your **Plex TV** folders
+- Sends downloads to **NZBGet** (categories `tv-orch` / `movie-orch`)
+- Renames/moves into your **Plex TV** and **Movies** folders
 - Live **Activity** + optional **Pushover/ntfy** (failures and snatches both ping your phone)
 - **Cleanup** page for stale unwatched media (via Plex watch history)
 
-No Sonarr / Overseerr / Prowlarr required for this TV flow.
+No Sonarr / Radarr / Overseerr required for this household flow.
 
 ## Install on Proxmox (one command)
 
@@ -62,14 +62,18 @@ With your real paths / keys:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh | \
-  TV_LIBRARY_HOST=/mnt/plex/tv \
+  TV_LIBRARY_HOST="/mnt/plex/TV Shows" \
+  MOVIE_LIBRARY_HOST=/mnt/plex/Movies \
   DOWNLOADS_HOST=/mnt/nzbget/completed \
   NZBGET_URL=http://127.0.0.1:6789 \
   NZBGEEK_API_KEY=your_key \
   NZBFINDER_API_KEY=your_key \
+  TMDB_API_KEY=your_tmdb_key \
   ADMIN_PASS='pick-a-password' \
   bash
 ```
+
+Movies land in `MOVIE_LIBRARY_HOST` (default `/mnt/plex/Movies`) as `Title (Year)/Title (Year).mkv`. Create NZBGet category **movie-orch** (or match `NZBGET_MOVIE_CATEGORY`). Add a free [TMDB API key](https://www.themoviedb.org/settings/api) in setup so anyone in the household can search posters and request.
 
 Then open `http://<r620-lan-ip>:3080` and sign in.
 
@@ -157,10 +161,11 @@ Or enter them in the setup walkthrough. **Admin → Send test phone ping** verif
 
 | Tab | Purpose |
 |-----|---------|
-| Search | TVMaze search + Request |
-| Library | **Full disk inventory** of every show on `/media/tv`, plus missing episodes in seasons you already own |
+| TV | TVMaze search + Request shows |
+| Movies | TMDB search + Request movies (wife-friendly one-tap) |
+| TV library | Full disk inventory + missing episodes + grab gaps |
 | Activity | Live trail of requests/snatches/imports/failures |
-| Requests | Who requested what |
+| Requests | Who requested what (TV) |
 | Cleanup | Stale unwatched files — mark for delete (2-day grace; spared if watched) |
 | Admin | Add users, health check, run monitor |
 

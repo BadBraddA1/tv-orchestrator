@@ -25,6 +25,11 @@ import {
   updateUserPassword,
   upsertSeries,
   listWantedEpisodes,
+  upsertMovie,
+  getMovieByTmdb,
+  listMovies,
+  createMovieRequest,
+  listMovieRequests,
   type User,
 } from "./db/repo.js";
 import {
@@ -53,6 +58,14 @@ import {
   scanLibraryIntoDb,
   syncSeriesEpisodes,
 } from "./workers/pipeline.js";
+import {
+  searchMovies,
+  getMovie,
+  tmdbPosterUrl,
+  yearFromRelease,
+  tmdbConfigured,
+} from "./services/tmdb.js";
+import { monitorMoviesOnce, pollMovieDownloadsOnce } from "./workers/movies.js";
 import { scanVideoFiles } from "./services/library.js";
 import {
   buildLibraryInventory,
@@ -77,6 +90,8 @@ const SETUP_KEYS = [
   "nzbfinder_api_key",
   "plex_url",
   "plex_token",
+  "tmdb_api_key",
+  "nzbget_movie_category",
   "pushover_user_key",
   "pushover_app_token",
   "ntfy_topic",
@@ -199,6 +214,7 @@ async function handleApi(
       plex: await plexConfigured(),
       setupComplete: isSetupComplete(),
       notify: alerts,
+      tmdb: tmdbConfigured(),
       indexers: {
         nzbgeek: Boolean(config.nzbgeek.apiKey),
         nzbfinder: Boolean(config.nzbfinder.apiKey),
@@ -226,6 +242,8 @@ async function handleApi(
         nzbfinder_api_key: saved.nzbfinder_api_key || config.nzbfinder.apiKey,
         plex_url: saved.plex_url || config.plex.url,
         plex_token: saved.plex_token || config.plex.token,
+        tmdb_api_key: saved.tmdb_api_key || config.tmdb.apiKey,
+        nzbget_movie_category: saved.nzbget_movie_category || config.nzbget.movieCategory,
         pushover_user_key: saved.pushover_user_key || config.pushover.userKey,
         pushover_app_token: saved.pushover_app_token || config.pushover.appToken,
         ntfy_topic: saved.ntfy_topic || config.ntfy.topic,
@@ -239,6 +257,7 @@ async function handleApi(
         nzbgeek: "NZBGeek → API → copy your Newznab API key (api.nzbgeek.info).",
         nzbfinder: "NZB Finder account → API / Newznab key.",
         plex: "Plex → account → XML or https://support.plex.tv for X-Plex-Token from any plex URL (&X-Plex-Token=).",
+        tmdb: "Free API key from themoviedb.org → Settings → API. Used so your household can search/poster movies.",
         push: "Optional: Pushover user key + app token, or an ntfy topic name.",
       },
     });
@@ -530,6 +549,82 @@ async function handleApi(
     return true;
   }
 
+  if (path === "/api/movies/search" && method === "GET") {
+    const q = url.searchParams.get("q")?.trim() || "";
+    if (q.length < 2) {
+      sendJson(res, 200, []);
+      return true;
+    }
+    try {
+      const hits = await searchMovies(q);
+      sendJson(
+        res,
+        200,
+        hits.slice(0, 24).map((m) => {
+          const existing = getMovieByTmdb(m.id);
+          return {
+            tmdbId: m.id,
+            title: m.title,
+            year: yearFromRelease(m.release_date),
+            poster: tmdbPosterUrl(m.poster_path),
+            overview: m.overview || "",
+            vote: m.vote_average ?? null,
+            status: existing?.status || null,
+            movieId: existing?.id || null,
+          };
+        }),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendJson(res, 400, { error: msg });
+    }
+    return true;
+  }
+
+  if (path === "/api/movies/request" && method === "POST") {
+    const body = await readJson<{ tmdbId?: number }>(req);
+    if (!body.tmdbId) {
+      sendJson(res, 400, { error: "tmdbId required" });
+      return true;
+    }
+    const info = await getMovie(body.tmdbId);
+    const movie = upsertMovie({
+      tmdbId: info.id,
+      title: info.title,
+      year: yearFromRelease(info.release_date),
+      posterUrl: tmdbPosterUrl(info.poster_path),
+      overview: info.overview || null,
+      monitored: true,
+      qualityProfile: config.qualityProfile,
+      status: "wanted",
+    });
+    const request = createMovieRequest({
+      userId: auth.user.id,
+      movieId: movie.id,
+    });
+    const label = movie.year ? `${movie.title} (${movie.year})` : movie.title;
+    const msg = `${auth.user.username} requested movie ${label}`;
+    addActivity({
+      kind: "request",
+      message: msg,
+      userId: auth.user.id,
+    });
+    await notify("New movie request", msg);
+    void monitorMoviesOnce().catch((err) => console.warn(err));
+    sendJson(res, 200, { request, movie });
+    return true;
+  }
+
+  if (path === "/api/movies" && method === "GET") {
+    sendJson(res, 200, listMovies());
+    return true;
+  }
+
+  if (path === "/api/movies/requests" && method === "GET") {
+    sendJson(res, 200, listMovieRequests(100));
+    return true;
+  }
+
   if (path === "/api/series" && method === "GET") {
     const all = listSeries().map((s) => {
       const eps = listEpisodesForSeries(s.id);
@@ -677,6 +772,8 @@ async function handleApi(
     }
     await monitorOnce();
     await pollDownloadsOnce();
+    await monitorMoviesOnce();
+    await pollMovieDownloadsOnce();
     sendJson(res, 200, { ok: true });
     return true;
   }
@@ -883,10 +980,12 @@ export async function startServer(): Promise<void> {
 
   setInterval(() => {
     void monitorOnce().catch((e) => console.warn("[monitor]", e));
+    void monitorMoviesOnce().catch((e) => console.warn("[movies]", e));
   }, config.monitorIntervalMs);
 
   setInterval(() => {
     void pollDownloadsOnce().catch((e) => console.warn("[import]", e));
+    void pollMovieDownloadsOnce().catch((e) => console.warn("[movie-import]", e));
   }, config.importIntervalMs);
 
   setInterval(() => {

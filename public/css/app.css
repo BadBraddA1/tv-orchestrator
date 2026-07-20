@@ -304,8 +304,8 @@ label {
   color: var(--warn);
 }
 
-#inventorySummary {
-  margin: 0.75rem 0 1rem;
+.movie-lede {
+  margin-bottom: 1rem;
 }
 
 .panel-heading {

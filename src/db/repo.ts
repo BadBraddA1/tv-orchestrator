@@ -558,3 +558,193 @@ export function clearEpisodeFilePath(filePath: string): void {
     `UPDATE episodes SET file_path = NULL, status = CASE WHEN status IN ('available','imported') THEN 'wanted' ELSE status END, updated_at = ? WHERE file_path = ?`,
   ).run(nowIso(), filePath);
 }
+
+export type MovieStatus =
+  | "wanted"
+  | "snatched"
+  | "downloading"
+  | "available"
+  | "failed";
+
+export interface MovieRow {
+  id: string;
+  tmdb_id: number;
+  title: string;
+  year: number | null;
+  poster_url: string | null;
+  overview: string | null;
+  monitored: number;
+  quality_profile: string;
+  status: MovieStatus;
+  file_path: string | null;
+  nzbget_id: number | null;
+  release_title: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getMovieByTmdb(tmdbId: number): MovieRow | undefined {
+  return db.prepare(`SELECT * FROM movies WHERE tmdb_id = ?`).get(tmdbId) as
+    | MovieRow
+    | undefined;
+}
+
+export function getMovieById(id: string): MovieRow | undefined {
+  return db.prepare(`SELECT * FROM movies WHERE id = ?`).get(id) as MovieRow | undefined;
+}
+
+export function listMovies(): MovieRow[] {
+  return db
+    .prepare(`SELECT * FROM movies ORDER BY title COLLATE NOCASE`)
+    .all() as MovieRow[];
+}
+
+export function upsertMovie(input: {
+  tmdbId: number;
+  title: string;
+  year?: number | null;
+  posterUrl?: string | null;
+  overview?: string | null;
+  monitored?: boolean;
+  qualityProfile?: string;
+  status?: MovieStatus;
+}): MovieRow {
+  const existing = getMovieByTmdb(input.tmdbId);
+  const ts = nowIso();
+  if (existing) {
+    db.prepare(
+      `UPDATE movies SET title=@title, year=@year, poster_url=@poster_url, overview=@overview,
+       monitored=@monitored, quality_profile=@quality_profile,
+       status=COALESCE(@status, status), updated_at=@updated_at WHERE id=@id`,
+    ).run({
+      id: existing.id,
+      title: input.title,
+      year: input.year ?? null,
+      poster_url: input.posterUrl ?? null,
+      overview: input.overview ?? null,
+      monitored: input.monitored === false ? 0 : 1,
+      quality_profile: input.qualityProfile ?? existing.quality_profile,
+      status: input.status ?? null,
+      updated_at: ts,
+    });
+    return getMovieById(existing.id)!;
+  }
+  const row: MovieRow = {
+    id: nanoid(),
+    tmdb_id: input.tmdbId,
+    title: input.title,
+    year: input.year ?? null,
+    poster_url: input.posterUrl ?? null,
+    overview: input.overview ?? null,
+    monitored: input.monitored === false ? 0 : 1,
+    quality_profile: input.qualityProfile ?? "1080p",
+    status: input.status ?? "wanted",
+    file_path: null,
+    nzbget_id: null,
+    release_title: null,
+    error: null,
+    created_at: ts,
+    updated_at: ts,
+  };
+  db.prepare(
+    `INSERT INTO movies (id, tmdb_id, title, year, poster_url, overview, monitored, quality_profile, status, file_path, nzbget_id, release_title, error, created_at, updated_at)
+     VALUES (@id, @tmdb_id, @title, @year, @poster_url, @overview, @monitored, @quality_profile, @status, @file_path, @nzbget_id, @release_title, @error, @created_at, @updated_at)`,
+  ).run(row);
+  return row;
+}
+
+export function updateMovie(
+  id: string,
+  patch: Partial<{
+    status: MovieStatus;
+    file_path: string | null;
+    nzbget_id: number | null;
+    release_title: string | null;
+    error: string | null;
+    monitored: number;
+  }>,
+): void {
+  const current = getMovieById(id);
+  if (!current) return;
+  db.prepare(
+    `UPDATE movies SET status=@status, file_path=@file_path, nzbget_id=@nzbget_id,
+     release_title=@release_title, error=@error, monitored=@monitored, updated_at=@updated_at WHERE id=@id`,
+  ).run({
+    id,
+    status: patch.status ?? current.status,
+    file_path: patch.file_path !== undefined ? patch.file_path : current.file_path,
+    nzbget_id: patch.nzbget_id !== undefined ? patch.nzbget_id : current.nzbget_id,
+    release_title:
+      patch.release_title !== undefined ? patch.release_title : current.release_title,
+    error: patch.error !== undefined ? patch.error : current.error,
+    monitored: patch.monitored !== undefined ? patch.monitored : current.monitored,
+    updated_at: nowIso(),
+  });
+}
+
+export function listWantedMovies(): MovieRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM movies WHERE monitored = 1 AND status IN ('wanted', 'failed')
+       ORDER BY updated_at ASC`,
+    )
+    .all() as MovieRow[];
+}
+
+export function listActiveMovieDownloads(): MovieRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM movies WHERE status IN ('snatched', 'downloading') AND nzbget_id IS NOT NULL`,
+    )
+    .all() as MovieRow[];
+}
+
+export function createMovieRequest(input: {
+  userId: string;
+  movieId: string;
+}): { id: string; user_id: string; movie_id: string; status: string; created_at: string } {
+  const row = {
+    id: nanoid(),
+    user_id: input.userId,
+    movie_id: input.movieId,
+    status: "approved",
+    created_at: nowIso(),
+  };
+  db.prepare(
+    `INSERT INTO movie_requests (id, user_id, movie_id, status, created_at)
+     VALUES (@id, @user_id, @movie_id, @status, @created_at)`,
+  ).run(row);
+  return row;
+}
+
+export function listMovieRequests(limit = 50): Array<{
+  id: string;
+  status: string;
+  created_at: string;
+  username: string;
+  title: string;
+  year: number | null;
+  poster_url: string | null;
+  movie_status: string;
+}> {
+  return db
+    .prepare(
+      `SELECT r.id, r.status, r.created_at, u.username, m.title, m.year, m.poster_url,
+              m.status AS movie_status
+       FROM movie_requests r
+       JOIN users u ON u.id = r.user_id
+       JOIN movies m ON m.id = r.movie_id
+       ORDER BY r.created_at DESC LIMIT ?`,
+    )
+    .all(limit) as Array<{
+    id: string;
+    status: string;
+    created_at: string;
+    username: string;
+    title: string;
+    year: number | null;
+    poster_url: string | null;
+    movie_status: string;
+  }>;
+}

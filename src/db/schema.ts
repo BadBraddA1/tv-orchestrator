@@ -98,9 +98,36 @@ export function migrate(): void {
       note TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS movies (
+      id TEXT PRIMARY KEY,
+      tmdb_id INTEGER NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      year INTEGER,
+      poster_url TEXT,
+      overview TEXT,
+      monitored INTEGER NOT NULL DEFAULT 1,
+      quality_profile TEXT NOT NULL DEFAULT '1080p',
+      status TEXT NOT NULL DEFAULT 'wanted',
+      file_path TEXT,
+      nzbget_id INTEGER,
+      release_title TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS movie_requests (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      movie_id TEXT NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'approved',
+      created_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_episodes_status ON episodes(status);
     CREATE INDEX IF NOT EXISTS idx_activity_created ON activity(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_pending_deletes_status ON pending_deletes(status, delete_after);
+    CREATE INDEX IF NOT EXISTS idx_movies_status ON movies(status);
   `);
 }

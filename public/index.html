@@ -29,9 +29,9 @@
 
       <section id="loginView" class="login-view">
         <div class="login-card">
-          <p class="eyebrow">Household TV</p>
-          <h1>Request shows</h1>
-          <p class="sub">Search, request, and watch it land in Plex — with a clear trail.</p>
+          <p class="eyebrow">Household media</p>
+          <h1>TV &amp; Movies for Plex</h1>
+          <p class="sub">Search, request, and watch it land in Plex — shows and movies, no tech talk required.</p>
           <form id="loginForm">
             <label>
               Username
@@ -55,8 +55,8 @@
       <section id="mainView" class="main-view" hidden>
         <header class="top">
           <div>
-            <p class="eyebrow">TV Orchestrator</p>
-            <h1>Discover</h1>
+            <p class="eyebrow">Orca</p>
+            <h1>TV &amp; Movies</h1>
           </div>
           <div class="top-right">
             <span id="whoami" class="who"></span>
@@ -65,8 +65,9 @@
         </header>
 
         <nav class="tabs">
-          <button type="button" data-tab="search" class="tab active">Search</button>
-          <button type="button" data-tab="library" class="tab">Library</button>
+          <button type="button" data-tab="search" class="tab active">TV</button>
+          <button type="button" data-tab="movies" class="tab">Movies</button>
+          <button type="button" data-tab="library" class="tab">TV library</button>
           <button type="button" data-tab="activity" class="tab">Activity</button>
           <button type="button" data-tab="requests" class="tab">Requests</button>
           <button type="button" data-tab="cleanup" class="tab">Cleanup</button>
@@ -79,6 +80,17 @@
             <button type="submit">Search</button>
           </form>
           <div id="searchResults" class="poster-grid"></div>
+        </div>
+
+        <div id="tab-movies" class="tab-panel" hidden>
+          <p class="sub movie-lede">Search and request a movie — it lands in Plex when the download finishes. No tech required.</p>
+          <form id="movieSearchForm" class="search-row">
+            <input id="movieSearchInput" placeholder="Search movies…" autocomplete="off" />
+            <button type="submit">Search</button>
+          </form>
+          <div id="movieSearchResults" class="poster-grid"></div>
+          <h2 class="section-title">Your movie queue</h2>
+          <div id="movieQueue" class="series-list"></div>
         </div>
 
         <div id="tab-library" class="tab-panel" hidden>
@@ -146,6 +158,6 @@
         </div>
       </section>
     </div>
-    <script src="/js/app.js?v=cleanup-ui2"></script>
+    <script src="/js/app.js?v=movies1"></script>
   </body>
 </html>

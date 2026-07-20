@@ -29,6 +29,7 @@ export type AppConfig = {
   port: number;
   dataDir: string;
   tvLibrary: string;
+  movieLibrary: string;
   downloads: string;
   autoApprove: boolean;
   staleDays: number;
@@ -41,9 +42,10 @@ export type AppConfig = {
   qualityProfile: "1080p" | "720p" | "any";
   hostProjectDir: string;
   composeHostDir: string;
-  nzbget: { url: string; user: string; pass: string; category: string };
+  nzbget: { url: string; user: string; pass: string; category: string; movieCategory: string };
   nzbgeek: { url: string; apiKey: string };
   nzbfinder: { url: string; apiKey: string };
+  tmdb: { apiKey: string };
   plex: { url: string; token: string };
   pushover: { userKey: string; appToken: string };
   ntfy: { topic: string; server: string };
@@ -55,6 +57,7 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
     port: int("PORT", 3080),
     dataDir: resolve(process.cwd(), str("DATA_DIR", "./data")),
     tvLibrary: resolve(process.cwd(), str("TV_LIBRARY", "./media/tv")),
+    movieLibrary: resolve(process.cwd(), str("MOVIE_LIBRARY", "./media/movies")),
     downloads: resolve(process.cwd(), str("DOWNLOADS", "./media/downloads")),
     autoApprove: bool("AUTO_APPROVE", true),
     staleDays: int("STALE_DAYS", 365),
@@ -72,6 +75,12 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
       user: settingOrEnv(settings, "nzbget_user", "NZBGET_USER", "nzbget"),
       pass: settingOrEnv(settings, "nzbget_pass", "NZBGET_PASS", ""),
       category: settingOrEnv(settings, "nzbget_category", "NZBGET_CATEGORY", "tv-orch"),
+      movieCategory: settingOrEnv(
+        settings,
+        "nzbget_movie_category",
+        "NZBGET_MOVIE_CATEGORY",
+        "movie-orch",
+      ),
     },
     nzbgeek: {
       url: settingOrEnv(settings, "nzbgeek_url", "NZBGEEK_URL", "https://api.nzbgeek.info").replace(/\/$/, ""),
@@ -80,6 +89,9 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
     nzbfinder: {
       url: settingOrEnv(settings, "nzbfinder_url", "NZBFINDER_URL", "https://nzbfinder.ws").replace(/\/$/, ""),
       apiKey: settingOrEnv(settings, "nzbfinder_api_key", "NZBFINDER_API_KEY"),
+    },
+    tmdb: {
+      apiKey: settingOrEnv(settings, "tmdb_api_key", "TMDB_API_KEY"),
     },
     plex: {
       url: settingOrEnv(settings, "plex_url", "PLEX_URL", "http://127.0.0.1:32400").replace(/\/$/, ""),

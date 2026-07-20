@@ -108,13 +108,21 @@ fi
 
 if [[ ! -f .compose.env ]]; then
   TV_LIBRARY_HOST="${TV_LIBRARY_HOST:-$INSTALL_DIR/media/tv}"
+  MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST:-/mnt/plex/Movies}"
   DOWNLOADS_HOST="${DOWNLOADS_HOST:-$INSTALL_DIR/media/downloads}"
-  mkdir -p "$TV_LIBRARY_HOST" "$DOWNLOADS_HOST" data
+  mkdir -p "$TV_LIBRARY_HOST" "$MOVIE_LIBRARY_HOST" "$DOWNLOADS_HOST" data
   cat > .compose.env <<EOF
 TV_LIBRARY_HOST="${TV_LIBRARY_HOST}"
+MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST}"
 DOWNLOADS_HOST="${DOWNLOADS_HOST}"
 EOF
 fi
+
+# Ensure movies mount is present for upgrades from TV-only installs
+if ! grep -qE '^MOVIE_LIBRARY_HOST=' .compose.env 2>/dev/null; then
+  echo "MOVIE_LIBRARY_HOST=\"${MOVIE_LIBRARY_HOST:-/mnt/plex/Movies}\"" >> .compose.env
+fi
+mkdir -p "${MOVIE_LIBRARY_HOST:-/mnt/plex/Movies}" 2>/dev/null || true
 
 fix_compose_env_quotes .compose.env
 

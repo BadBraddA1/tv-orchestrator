@@ -4,6 +4,7 @@ import { startServer } from "./server.js";
 
 mkdirSync(config.dataDir, { recursive: true });
 mkdirSync(config.tvLibrary, { recursive: true });
+mkdirSync(config.movieLibrary, { recursive: true });
 mkdirSync(config.downloads, { recursive: true });
 
 startServer().catch((err) => {

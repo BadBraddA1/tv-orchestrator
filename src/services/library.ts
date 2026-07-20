@@ -106,3 +106,20 @@ export function plexSeasonDir(show: string, season: number): string {
   const s = String(season).padStart(2, "0");
   return join(config.tvLibrary, safeShow, `Season ${s}`);
 }
+
+/** Plex-friendly movie folder + filename stem: Title (Year) */
+export function plexMovieFolder(title: string, year: number | null): string {
+  const safe = title.replace(/[<>:"/\\|?*]/g, "").trim();
+  const name = year ? `${safe} (${year})` : safe;
+  return join(config.movieLibrary, name);
+}
+
+export function plexMovieFileName(
+  title: string,
+  year: number | null,
+  ext: string,
+): string {
+  const safe = title.replace(/[<>:"/\\|?*]/g, "").trim();
+  const stem = year ? `${safe} (${year})` : safe;
+  return `${stem}${ext}`;
+}

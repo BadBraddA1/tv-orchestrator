@@ -9,6 +9,10 @@
   const searchForm = document.getElementById("searchForm");
   const searchInput = document.getElementById("searchInput");
   const searchResults = document.getElementById("searchResults");
+  const movieSearchForm = document.getElementById("movieSearchForm");
+  const movieSearchInput = document.getElementById("movieSearchInput");
+  const movieSearchResults = document.getElementById("movieSearchResults");
+  const movieQueue = document.getElementById("movieQueue");
   const libraryList = document.getElementById("libraryList");
   const inventorySummary = document.getElementById("inventorySummary");
   const inventoryBtn = document.getElementById("inventoryBtn");
@@ -83,7 +87,7 @@
     },
     {
       id: "plex",
-      title: "Plex (stale cleanup)",
+      title: "Plex",
       tipKey: "plex",
       fields: [
         { key: "plex_url", label: "Plex URL", placeholder: "http://127.0.0.1:32400" },
@@ -93,6 +97,24 @@
           label: "Preferred quality",
           type: "select",
           options: ["1080p", "720p", "any"],
+        },
+      ],
+    },
+    {
+      id: "tmdb",
+      title: "Movies (TMDB)",
+      tipKey: "tmdb",
+      fields: [
+        {
+          key: "tmdb_api_key",
+          label: "TMDB API key (free)",
+          type: "password",
+          placeholder: "from themoviedb.org",
+        },
+        {
+          key: "nzbget_movie_category",
+          label: "NZBGet movie category",
+          placeholder: "movie-orch",
         },
       ],
     },
@@ -316,6 +338,9 @@
         p.hidden = p.id !== `tab-${tab}`;
       });
       if (tab === "library") loadLibrary();
+      if (tab === "movies") {
+        loadMovieQueue();
+      }
       if (tab === "activity") loadActivity();
       if (tab === "requests") loadRequests();
       if (tab === "cleanup") loadStale();
@@ -428,6 +453,102 @@
       }
     } catch (err) {
       searchResults.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    }
+  });
+
+  async function loadMovieQueue() {
+    if (!movieQueue) return;
+    movieQueue.innerHTML = "<p class='sub'>Loading…</p>";
+    try {
+      const movies = await api("/api/movies");
+      movieQueue.replaceChildren();
+      if (!movies.length) {
+        movieQueue.innerHTML =
+          "<p class='sub'>No movies requested yet. Search above and tap Request.</p>";
+        return;
+      }
+      for (const m of movies) {
+        const row = document.createElement("div");
+        row.className = "row";
+        const chip =
+          m.status === "available"
+            ? "ok"
+            : m.status === "failed"
+              ? "err"
+              : m.status === "wanted"
+                ? "warn"
+                : "";
+        row.innerHTML = `<div class="row-top">
+            <strong>${escapeHtml(m.title)}${m.year ? ` (${m.year})` : ""}</strong>
+            <span class="chip ${chip}">${escapeHtml(m.status)}</span>
+          </div>
+          <p class="meta">${m.error ? escapeHtml(m.error) : m.release_title ? escapeHtml(m.release_title) : "In queue"}</p>`;
+        movieQueue.appendChild(row);
+      }
+    } catch (err) {
+      movieQueue.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  movieSearchForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const q = movieSearchInput.value.trim();
+    movieSearchResults.innerHTML = "<p class='sub'>Searching…</p>";
+    try {
+      const hits = await api(`/api/movies/search?q=${encodeURIComponent(q)}`);
+      if (!Array.isArray(hits)) {
+        throw new Error(hits?.error || "Search failed");
+      }
+      if (!hits.length) {
+        movieSearchResults.innerHTML = "<p class='sub'>No movies found.</p>";
+        return;
+      }
+      movieSearchResults.replaceChildren();
+      for (const hit of hits) {
+        const card = document.createElement("article");
+        card.className = "card";
+        const img = document.createElement("img");
+        img.alt = hit.title;
+        img.src = hit.poster || "";
+        if (!hit.poster) img.style.display = "none";
+        const body = document.createElement("div");
+        body.className = "card-body";
+        body.innerHTML = `<h3>${escapeHtml(hit.title)}</h3>
+          <p class="meta">${hit.year || "—"}${hit.vote != null ? ` · ★ ${Number(hit.vote).toFixed(1)}` : ""}</p>
+          <p class="meta">${escapeHtml((hit.overview || "").slice(0, 110))}${(hit.overview || "").length > 110 ? "…" : ""}</p>`;
+        const btn = document.createElement("button");
+        if (hit.status === "available") {
+          btn.textContent = "In Plex";
+          btn.disabled = true;
+        } else if (hit.status === "wanted" || hit.status === "snatched" || hit.status === "downloading") {
+          btn.textContent = hit.status;
+          btn.disabled = true;
+        } else {
+          btn.textContent = "Request";
+          btn.addEventListener("click", async () => {
+            btn.disabled = true;
+            btn.textContent = "Requesting…";
+            try {
+              await api("/api/movies/request", {
+                method: "POST",
+                body: JSON.stringify({ tmdbId: hit.tmdbId }),
+              });
+              btn.textContent = "Requested";
+              loadMovieQueue();
+              loadActivity();
+            } catch (err) {
+              btn.disabled = false;
+              btn.textContent = "Request";
+              alert(err.message);
+            }
+          });
+        }
+        body.appendChild(btn);
+        card.append(img, body);
+        movieSearchResults.appendChild(card);
+      }
+    } catch (err) {
+      movieSearchResults.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
     }
   });
 

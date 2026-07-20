@@ -10,6 +10,7 @@ services:
     environment:
       DATA_DIR: /data
       TV_LIBRARY: /media/tv
+      MOVIE_LIBRARY: /media/movies
       DOWNLOADS: /media/downloads
       HOST_PROJECT_DIR: /host/project
       # Absolute path on the Proxmox host (written by ./update.sh / install.sh)
@@ -17,6 +18,7 @@ services:
     volumes:
       - ./data:/data
       - ${TV_LIBRARY_HOST:-./media/tv}:/media/tv
+      - ${MOVIE_LIBRARY_HOST:-./media/movies}:/media/movies
       - ${DOWNLOADS_HOST:-./media/downloads}:/media/downloads
       # Self-update from Admin → Update (git pull + rebuild)
       - .:/host/project

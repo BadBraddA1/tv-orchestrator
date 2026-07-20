@@ -151,18 +151,20 @@ if grep -q '^SESSION_SECRET=change-this-to-a-long-random-string$' .env; then
 fi
 
 TV_LIBRARY_HOST="${TV_LIBRARY_HOST:-$INSTALL_DIR/media/tv}"
+MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST:-/mnt/plex/Movies}"
 DOWNLOADS_HOST="${DOWNLOADS_HOST:-$INSTALL_DIR/media/downloads}"
-mkdir -p "$TV_LIBRARY_HOST" "$DOWNLOADS_HOST" "$INSTALL_DIR/data"
+mkdir -p "$TV_LIBRARY_HOST" "$MOVIE_LIBRARY_HOST" "$DOWNLOADS_HOST" "$INSTALL_DIR/data"
 
 cat > .compose.env <<EOF
 TV_LIBRARY_HOST="${TV_LIBRARY_HOST}"
+MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST}"
 DOWNLOADS_HOST="${DOWNLOADS_HOST}"
 COMPOSE_HOST_DIR=${INSTALL_DIR}
 EOF
 printf '%s\n' "$INSTALL_DIR" > .hostdir
 
 echo "==> Building and starting container…"
-export TV_LIBRARY_HOST DOWNLOADS_HOST
+export TV_LIBRARY_HOST MOVIE_LIBRARY_HOST DOWNLOADS_HOST
 "${COMPOSE[@]}" --env-file .compose.env up -d --build
 
 LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
@@ -174,6 +176,7 @@ echo ""
 echo "  UI:        http://${LAN_IP}:${PORT_DEFAULT}"
 echo "  Dir:       ${INSTALL_DIR}"
 echo "  Library:   ${TV_LIBRARY_HOST}  →  /media/tv"
+echo "  Movies:    ${MOVIE_LIBRARY_HOST}  →  /media/movies"
 echo "  Downloads: ${DOWNLOADS_HOST}  →  /media/downloads"
 echo ""
 echo "  Login:     ADMIN_USER / ADMIN_PASS from ${INSTALL_DIR}/.env"

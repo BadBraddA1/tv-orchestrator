@@ -53,14 +53,14 @@ export function withIndexerApiKey(nzbUrl: string, indexer: string): string {
   }
 }
 
-function appendParams(name: string, content: string): unknown[] {
+function appendParams(name: string, content: string, category: string): unknown[] {
   // append(NZBFilename, Content, Category, Priority, AddToTop, AddPaused,
   //        DupeKey, DupeScore, DupeMode, PPParameters[])
   // PPParameters must be an array — not false/null — or NZBGet rejects the call.
   return [
     `${name}.nzb`,
     content,
-    config.nzbget.category,
+    category,
     0,
     false,
     false,
@@ -75,6 +75,7 @@ export async function appendUrl(
   nzbUrl: string,
   name: string,
   indexer = "",
+  category = config.nzbget.category,
 ): Promise<number> {
   const authedUrl = withIndexerApiKey(nzbUrl, indexer);
   const safeName = name.replace(/[^\w.\-]+/g, "_").slice(0, 180);
@@ -82,7 +83,10 @@ export async function appendUrl(
   // Prefer letting NZBGet fetch the NZB URL (supports http/https content).
   // Fall back to downloading here if NZBGet rejects the URL form.
   try {
-    const id = await nzbgetCall<number>("append", appendParams(safeName, authedUrl));
+    const id = await nzbgetCall<number>(
+      "append",
+      appendParams(safeName, authedUrl, category),
+    );
     if (typeof id === "number" && id > 0) return id;
     throw new Error(`NZBGet append returned ${id}`);
   } catch (urlErr) {
@@ -109,7 +113,7 @@ export async function appendUrl(
     try {
       const id = await nzbgetCall<number>(
         "append",
-        appendParams(safeName, buf.toString("base64")),
+        appendParams(safeName, buf.toString("base64"), category),
       );
       if (typeof id === "number" && id > 0) return id;
       throw new Error(`NZBGet append returned ${id}`);

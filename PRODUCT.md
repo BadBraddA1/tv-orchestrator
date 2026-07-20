@@ -6,11 +6,11 @@ product
 
 ## Users
 
-Household admin (and signed-in family) on a home LAN — usually Brad managing Plex + Usenet from phone/desktop. Context: “is the library healthy, what’s missing, what’s wasting disk?” Sessions are short ops bursts, not browsing.
+Household members (especially non-tech partners) requesting TV and movies into Plex from phone/desktop. Admin (Brad) manages stack health, cleanup, and settings on a home LAN. Context: “I want this in Plex tonight without asking anyone.”
 
 ## Product Purpose
 
-TV Orchestrator (“orca”) turns a Proxmox media stack into a simple request → grab → import loop, plus library inventory, gap fills, and stale cleanup. Success is: find a show, get it into Plex without SSH, and reclaim disk from unwatched junk without surprises.
+TV Orchestrator (“orca”) turns a Proxmox media stack into a simple request → grab → import loop for **TV and movies**, plus library inventory, gap fills, and stale cleanup. Success is: anyone in the house finds a title, taps Request, and it appears in Plex — no SSH, no Sonarr/Radarr UI.
 
 ## Brand Personality
 

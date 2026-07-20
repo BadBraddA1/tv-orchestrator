@@ -129,6 +129,52 @@ export async function searchEpisode(input: {
   });
 }
 
+export async function searchMovie(input: {
+  title: string;
+  year?: number | null;
+}): Promise<NewznabRelease[]> {
+  const q = input.year ? `${input.title} ${input.year}` : input.title;
+  const results: NewznabRelease[] = [];
+  for (const idx of indexers()) {
+    try {
+      const url = new URL(`${idx.url}/api`);
+      url.searchParams.set("t", "movie");
+      url.searchParams.set("apikey", idx.apiKey);
+      url.searchParams.set("q", q);
+      if (input.year) url.searchParams.set("year", String(input.year));
+      url.searchParams.set("limit", "50");
+      url.searchParams.set("extended", "1");
+      const res = await fetch(url);
+      if (!res.ok) {
+        // Fallback: generic search in movie cats
+        const url2 = new URL(`${idx.url}/api`);
+        url2.searchParams.set("t", "search");
+        url2.searchParams.set("apikey", idx.apiKey);
+        url2.searchParams.set("q", q);
+        url2.searchParams.set("cat", "2000");
+        url2.searchParams.set("limit", "50");
+        const res2 = await fetch(url2);
+        if (!res2.ok) {
+          console.warn(`[newznab] ${idx.name} movie HTTP ${res.status}/${res2.status}`);
+          continue;
+        }
+        results.push(...parseRssItems(await res2.text(), idx.name));
+        continue;
+      }
+      results.push(...parseRssItems(await res.text(), idx.name));
+    } catch (err) {
+      console.warn(`[newznab] ${idx.name} movie`, err);
+    }
+  }
+  const seen = new Set<string>();
+  return results.filter((r) => {
+    const key = `${r.title}|${r.size}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function scoreRelease(
   release: NewznabRelease,
   profile: string,
