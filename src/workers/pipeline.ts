@@ -9,7 +9,7 @@ import {
   upsertEpisode,
   listSeries,
 } from "../db/repo.js";
-import { searchEpisode, rankReleases } from "../services/newznab.js";
+import { searchEpisode, rankReleases, parseBlockedReleases, addBlockedRelease } from "../services/newznab.js";
 import * as nzbget from "../services/nzbget.js";
 import { notify } from "../services/notify.js";
 import {
@@ -87,20 +87,25 @@ export async function monitorOnce(limit = 5): Promise<void> {
       const ranked = rankReleases(
         releases,
         ep.quality_profile || config.qualityProfile,
+        parseBlockedReleases(ep.blocked_releases),
       );
       if (!ranked.length) {
-        await applyEpisodeSoftFail(ep, label, "No NZB found yet");
+        await applyEpisodeSoftFail(ep, label, "No NZB found yet (all releases blocked or empty)");
         continue;
       }
 
       let nzbId: number | null = null;
       let chosen = ranked[0]!;
       const attemptErrors: string[] = [];
+      let blocked = ep.blocked_releases;
       for (const release of ranked.slice(0, 8)) {
         try {
           nzbId = await nzbget.appendUrl(
             release.link,
-            `${ep.series_title}.S${pad(ep.season)}E${pad(ep.episode)}`,
+            nzbget.nzbJobName(
+              `${ep.series_title}.S${pad(ep.season)}E${pad(ep.episode)}`,
+              release.title,
+            ),
             release.indexer,
           );
           chosen = release;
@@ -108,13 +113,16 @@ export async function monitorOnce(limit = 5): Promise<void> {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           attemptErrors.push(`${release.indexer}: ${msg}`);
+          blocked = addBlockedRelease(blocked, release.title);
           console.warn(`[grab] ${label} try failed`, msg);
         }
       }
 
       if (nzbId == null) {
         const detail = attemptErrors.slice(0, 3).join(" | ") || "all NZB append attempts failed";
-        await applyEpisodeSoftFail(ep, label, detail);
+        await applyEpisodeSoftFail(ep, label, detail, {
+          blockedReleases: blocked,
+        });
         continue;
       }
 
@@ -123,6 +131,7 @@ export async function monitorOnce(limit = 5): Promise<void> {
         nzbget_id: nzbId,
         release_title: chosen.title,
         error: null,
+        blocked_releases: blocked ?? ep.blocked_releases,
         ...clearRetryState(),
         import_attempts: 0,
       });
@@ -143,14 +152,27 @@ export async function monitorOnce(limit = 5): Promise<void> {
 }
 
 async function applyEpisodeSoftFail(
-  ep: { id: string; series_id: string; retry_count?: number },
+  ep: {
+    id: string;
+    series_id: string;
+    retry_count?: number;
+    release_title?: string | null;
+    blocked_releases?: string | null;
+  },
   label: string,
   error: string,
+  opts: { blockedReleases?: string | null; immediate?: boolean } = {},
 ): Promise<void> {
+  const blocked = addBlockedRelease(
+    opts.blockedReleases ?? ep.blocked_releases,
+    ep.release_title,
+  );
+  const isDupe = /dupe|deleted\/dupe/i.test(error);
   const plan = planSoftFail({
     label,
     error,
     previousRetryCount: ep.retry_count ?? 0,
+    immediate: opts.immediate ?? isDupe,
   });
   updateEpisode(ep.id, {
     status: plan.status,
@@ -159,6 +181,7 @@ async function applyEpisodeSoftFail(
     next_retry_at: plan.nextRetryAt,
     nzbget_id: null,
     release_title: null,
+    blocked_releases: blocked,
   });
   addActivity({
     kind: plan.activityKind,
@@ -234,11 +257,19 @@ export async function pollDownloadsOnce(): Promise<void> {
           `Import: ${error}`,
         );
       }
-    } else if (/fail|delete|unpack/i.test(hist.Status) && !/success/i.test(hist.Status)) {
+    } else if (/fail|delete|unpack|dupe/i.test(hist.Status) && !/success/i.test(hist.Status)) {
+      // Prefer a different NZB next — same release/name caused most DELETED/DUPE loops
       await applyEpisodeSoftFail(
-        { id: ep.id, series_id: ep.series_id, retry_count: ep.retry_count },
+        {
+          id: ep.id,
+          series_id: ep.series_id,
+          retry_count: ep.retry_count,
+          release_title: ep.release_title,
+          blocked_releases: ep.blocked_releases,
+        },
         label,
         `NZBGet status: ${hist.Status}`,
+        { immediate: /dupe/i.test(hist.Status) },
       );
     }
   }

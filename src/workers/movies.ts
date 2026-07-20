@@ -7,7 +7,7 @@ import {
   getMovieById,
   addActivity,
 } from "../db/repo.js";
-import { searchMovie, rankReleases } from "../services/newznab.js";
+import { searchMovie, rankReleases, parseBlockedReleases, addBlockedRelease } from "../services/newznab.js";
 import * as nzbget from "../services/nzbget.js";
 import { notify } from "../services/notify.js";
 import { plexMovieFolder, plexMovieFileName } from "../services/library.js";
@@ -24,20 +24,25 @@ export async function monitorMoviesOnce(limit = 3): Promise<void> {
         title: movie.title,
         year: movie.year,
       });
-      const ranked = rankReleases(releases, movie.quality_profile || config.qualityProfile);
+      const ranked = rankReleases(
+        releases,
+        movie.quality_profile || config.qualityProfile,
+        parseBlockedReleases(movie.blocked_releases),
+      );
       if (!ranked.length) {
-        await applyMovieSoftFail(movie, label, "No NZB found yet");
+        await applyMovieSoftFail(movie, label, "No NZB found yet (all releases blocked or empty)");
         continue;
       }
 
       let nzbId: number | null = null;
       let chosen = ranked[0]!;
       const attemptErrors: string[] = [];
+      let blocked = movie.blocked_releases;
       for (const release of ranked.slice(0, 8)) {
         try {
           nzbId = await nzbget.appendUrl(
             release.link,
-            label,
+            nzbget.nzbJobName(label, release.title),
             release.indexer,
             config.nzbget.movieCategory,
           );
@@ -46,13 +51,14 @@ export async function monitorMoviesOnce(limit = 3): Promise<void> {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           attemptErrors.push(`${release.indexer}: ${msg}`);
+          blocked = addBlockedRelease(blocked, release.title);
         }
       }
 
       if (nzbId == null) {
         const detail =
           attemptErrors.slice(0, 3).join(" | ") || "all NZB append attempts failed";
-        await applyMovieSoftFail(movie, label, detail);
+        await applyMovieSoftFail(movie, label, detail, { blockedReleases: blocked });
         continue;
       }
 
@@ -61,6 +67,7 @@ export async function monitorMoviesOnce(limit = 3): Promise<void> {
         nzbget_id: nzbId,
         release_title: chosen.title,
         error: null,
+        blocked_releases: blocked ?? movie.blocked_releases,
         ...clearRetryState(),
         import_attempts: 0,
       });
@@ -75,14 +82,26 @@ export async function monitorMoviesOnce(limit = 3): Promise<void> {
 }
 
 async function applyMovieSoftFail(
-  movie: { id: string; retry_count?: number },
+  movie: {
+    id: string;
+    retry_count?: number;
+    release_title?: string | null;
+    blocked_releases?: string | null;
+  },
   label: string,
   error: string,
+  opts: { blockedReleases?: string | null; immediate?: boolean } = {},
 ): Promise<void> {
+  const blocked = addBlockedRelease(
+    opts.blockedReleases ?? movie.blocked_releases,
+    movie.release_title,
+  );
+  const isDupe = /dupe|deleted\/dupe/i.test(error);
   const plan = planSoftFail({
     label: `movie ${label}`,
     error,
     previousRetryCount: movie.retry_count ?? 0,
+    immediate: opts.immediate ?? isDupe,
   });
   updateMovie(movie.id, {
     status: plan.status,
@@ -91,6 +110,7 @@ async function applyMovieSoftFail(
     next_retry_at: plan.nextRetryAt,
     nzbget_id: null,
     release_title: null,
+    blocked_releases: blocked,
   });
   addActivity({
     kind: plan.activityKind,
@@ -153,8 +173,10 @@ export async function pollMovieDownloadsOnce(): Promise<void> {
         }
         await applyMovieSoftFail(movie, label, `Import: ${error}`);
       }
-    } else if (/fail|delete|unpack/i.test(hist.Status) && !/success/i.test(hist.Status)) {
-      await applyMovieSoftFail(movie, label, `NZBGet status: ${hist.Status}`);
+    } else if (/fail|delete|unpack|dupe/i.test(hist.Status) && !/success/i.test(hist.Status)) {
+      await applyMovieSoftFail(movie, label, `NZBGet status: ${hist.Status}`, {
+        immediate: /dupe/i.test(hist.Status),
+      });
     }
   }
 }

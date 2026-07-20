@@ -50,6 +50,7 @@ export interface EpisodeRow {
   retry_count: number;
   next_retry_at: string | null;
   import_attempts: number;
+  blocked_releases: string | null;
   updated_at: string;
 }
 
@@ -297,6 +298,7 @@ export function upsertEpisode(input: {
     retry_count: 0,
     next_retry_at: null,
     import_attempts: 0,
+    blocked_releases: null,
     updated_at: ts,
   };
   db.prepare(
@@ -389,6 +391,7 @@ export function retryEpisode(id: string): (EpisodeRow & { series_title: string }
     retry_count: 0,
     next_retry_at: null,
     import_attempts: 0,
+    blocked_releases: null,
   });
   const updated = getEpisodeById(id);
   if (!updated) return null;
@@ -417,6 +420,7 @@ export function retryMovie(id: string): MovieRow | null {
     retry_count: 0,
     next_retry_at: null,
     import_attempts: 0,
+    blocked_releases: null,
   });
   return getMovieById(id) || null;
 }
@@ -533,6 +537,7 @@ export function updateEpisode(
     retry_count: number;
     next_retry_at: string | null;
     import_attempts: number;
+    blocked_releases: string | null;
   }>,
 ): void {
   const current = db.prepare(`SELECT * FROM episodes WHERE id = ?`).get(id) as EpisodeRow;
@@ -540,7 +545,8 @@ export function updateEpisode(
   db.prepare(
     `UPDATE episodes SET status=@status, file_path=@file_path, nzbget_id=@nzbget_id,
      release_title=@release_title, error=@error, retry_count=@retry_count,
-     next_retry_at=@next_retry_at, import_attempts=@import_attempts, updated_at=@updated_at WHERE id=@id`,
+     next_retry_at=@next_retry_at, import_attempts=@import_attempts,
+     blocked_releases=@blocked_releases, updated_at=@updated_at WHERE id=@id`,
   ).run({
     id,
     status: patch.status ?? current.status,
@@ -559,6 +565,10 @@ export function updateEpisode(
       patch.import_attempts !== undefined
         ? patch.import_attempts
         : current.import_attempts ?? 0,
+    blocked_releases:
+      patch.blocked_releases !== undefined
+        ? patch.blocked_releases
+        : current.blocked_releases ?? null,
     updated_at: nowIso(),
   });
 }
@@ -744,6 +754,7 @@ export interface MovieRow {
   retry_count: number;
   next_retry_at: string | null;
   import_attempts: number;
+  blocked_releases: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -817,6 +828,7 @@ export function upsertMovie(input: {
     retry_count: 0,
     next_retry_at: null,
     import_attempts: 0,
+    blocked_releases: null,
     created_at: ts,
     updated_at: ts,
   };
@@ -839,6 +851,7 @@ export function updateMovie(
     retry_count: number;
     next_retry_at: string | null;
     import_attempts: number;
+    blocked_releases: string | null;
   }>,
 ): void {
   const current = getMovieById(id);
@@ -847,7 +860,8 @@ export function updateMovie(
     `UPDATE movies SET status=@status, file_path=@file_path, nzbget_id=@nzbget_id,
      release_title=@release_title, error=@error, monitored=@monitored,
      retry_count=@retry_count, next_retry_at=@next_retry_at,
-     import_attempts=@import_attempts, updated_at=@updated_at WHERE id=@id`,
+     import_attempts=@import_attempts, blocked_releases=@blocked_releases,
+     updated_at=@updated_at WHERE id=@id`,
   ).run({
     id,
     status: patch.status ?? current.status,
@@ -867,6 +881,10 @@ export function updateMovie(
       patch.import_attempts !== undefined
         ? patch.import_attempts
         : current.import_attempts ?? 0,
+    blocked_releases:
+      patch.blocked_releases !== undefined
+        ? patch.blocked_releases
+        : current.blocked_releases ?? null,
     updated_at: nowIso(),
   });
 }

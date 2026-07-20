@@ -61,11 +61,14 @@ export function planSoftFail(input: {
   label: string;
   error: string;
   previousRetryCount: number;
+  /** Retry on next monitor tick (e.g. NZBGet DUPE — try another release) */
+  immediate?: boolean;
 }): SoftFailPlan {
   const kind = classifyFailure(input.error);
   const retryCount = (input.previousRetryCount || 0) + 1;
   const giveUp = kind === "hard" || shouldGiveUp(retryCount);
   const short = input.error.slice(0, 400);
+  const isDupe = /dupe|deleted\/dupe/i.test(input.error);
 
   if (giveUp) {
     return {
@@ -79,15 +82,20 @@ export function planSoftFail(input: {
     };
   }
 
-  const nextRetryAt = nextRetryIso(retryCount);
-  const wait = backoffLabel(retryCount);
+  const nextRetryAt =
+    input.immediate || isDupe
+      ? new Date(Date.now() + 30_000).toISOString()
+      : nextRetryIso(retryCount);
+  const wait =
+    input.immediate || isDupe ? "30s" : backoffLabel(retryCount);
   return {
     status: "wanted",
     retryCount,
     nextRetryAt,
-    // Ping only first soft miss (and finals above) — avoid phone spam
-    notify: retryCount === 1,
-    error: `Retry #${retryCount} in ~${wait}: ${short}`,
+    notify: retryCount === 1 && !isDupe,
+    error: isDupe
+      ? `Dupe/blocked release — trying another NZB in ~${wait} (#${retryCount})`
+      : `Retry #${retryCount} in ~${wait}: ${short}`,
     activityKind: "retry-wait",
     activityMessage: `${input.label}: will retry in ~${wait} (${retryCount}/${MAX_GRAB_RETRIES}) — ${short}`,
   };

@@ -164,9 +164,11 @@ export function migrate(): void {
   addColumnIfMissing("episodes", "retry_count", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("episodes", "next_retry_at", "TEXT");
   addColumnIfMissing("episodes", "import_attempts", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("episodes", "blocked_releases", "TEXT");
   addColumnIfMissing("movies", "retry_count", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("movies", "next_retry_at", "TEXT");
   addColumnIfMissing("movies", "import_attempts", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("movies", "blocked_releases", "TEXT");
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_episodes_next_retry ON episodes(status, next_retry_at);
     CREATE INDEX IF NOT EXISTS idx_movies_next_retry ON movies(status, next_retry_at);

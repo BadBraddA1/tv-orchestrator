@@ -221,8 +221,41 @@ export function pickBestRelease(
 export function rankReleases(
   releases: NewznabRelease[],
   profile: string,
+  excludeTitles: string[] = [],
 ): NewznabRelease[] {
-  return [...releases].sort(
-    (a, b) => scoreRelease(b, profile) - scoreRelease(a, profile),
+  const blocked = new Set(
+    excludeTitles.map((t) => t.toLowerCase().trim()).filter(Boolean),
   );
+  return [...releases]
+    .filter((r) => !blocked.has(r.title.toLowerCase().trim()))
+    .sort((a, b) => scoreRelease(b, profile) - scoreRelease(a, profile));
+}
+
+export function parseBlockedReleases(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.map(String).filter(Boolean).slice(0, 40);
+    }
+  } catch {
+    // plain newline list fallback
+  }
+  return raw
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 40);
+}
+
+export function addBlockedRelease(
+  raw: string | null | undefined,
+  title: string | null | undefined,
+): string {
+  const list = parseBlockedReleases(raw);
+  const t = (title || "").trim();
+  if (t && !list.some((x) => x.toLowerCase() === t.toLowerCase())) {
+    list.push(t);
+  }
+  return JSON.stringify(list.slice(-40));
 }

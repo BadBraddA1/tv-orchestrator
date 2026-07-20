@@ -53,10 +53,16 @@ export function withIndexerApiKey(nzbUrl: string, indexer: string): string {
   }
 }
 
-function appendParams(name: string, content: string, category: string): unknown[] {
+function appendParams(
+  name: string,
+  content: string,
+  category: string,
+  dupeMode: "SCORE" | "FORCE" | "ALL" = "FORCE",
+): unknown[] {
   // append(NZBFilename, Content, Category, Priority, AddToTop, AddPaused,
   //        DupeKey, DupeScore, DupeMode, PPParameters[])
-  // PPParameters must be an array — not false/null — or NZBGet rejects the call.
+  // Unique NZBFilename + FORCE avoids DELETED/DUPE when retrying the same episode
+  // with a different release (empty DupeKey + identical name used to collide).
   return [
     `${name}.nzb`,
     content,
@@ -64,11 +70,22 @@ function appendParams(name: string, content: string, category: string): unknown[
     0,
     false,
     false,
-    "",
+    name,
     0,
-    "SCORE",
+    dupeMode,
     [],
   ];
+}
+
+/** Short unique slug so NZBGet does not treat retries as the same download. */
+export function nzbJobName(base: string, releaseTitle?: string | null): string {
+  const safeBase = base.replace(/[^\w.\-]+/g, "_").slice(0, 100);
+  const slug = (releaseTitle || "")
+    .replace(/[^\w.\-]+/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 40);
+  const stamp = Date.now().toString(36).slice(-4);
+  return [safeBase, slug || "rel", stamp].filter(Boolean).join(".").slice(0, 180);
 }
 
 export async function appendUrl(
@@ -85,7 +102,7 @@ export async function appendUrl(
   try {
     const id = await nzbgetCall<number>(
       "append",
-      appendParams(safeName, authedUrl, category),
+      appendParams(safeName, authedUrl, category, "FORCE"),
     );
     if (typeof id === "number" && id > 0) return id;
     throw new Error(`NZBGet append returned ${id}`);
@@ -113,7 +130,7 @@ export async function appendUrl(
     try {
       const id = await nzbgetCall<number>(
         "append",
-        appendParams(safeName, buf.toString("base64"), category),
+        appendParams(safeName, buf.toString("base64"), category, "FORCE"),
       );
       if (typeof id === "number" && id > 0) return id;
       throw new Error(`NZBGet append returned ${id}`);
