@@ -68,13 +68,13 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-export async function monitorOnce(): Promise<void> {
+export async function monitorOnce(limit = 5): Promise<void> {
   const wanted = listWantedEpisodes().filter((e) => {
     if (!e.airdate) return true;
     return e.airdate <= new Date().toISOString().slice(0, 10);
   });
 
-  for (const ep of wanted.slice(0, 5)) {
+  for (const ep of wanted.slice(0, Math.max(1, limit))) {
     const label = `${ep.series_title} S${pad(ep.season)}E${pad(ep.episode)}`;
     try {
       const releases = await searchEpisode({

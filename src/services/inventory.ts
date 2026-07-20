@@ -1,4 +1,13 @@
-import { listSeries, upsertSeries, upsertEpisode, addActivity } from "../db/repo.js";
+import {
+  listSeries,
+  upsertSeries,
+  upsertEpisode,
+  addActivity,
+  setSeriesMonitored,
+  queueEpisodeWanted,
+  getSeriesById,
+  listWantedEpisodes,
+} from "../db/repo.js";
 import { getSetting, setSetting } from "../db/settings.js";
 import { scanVideoFiles, type ParsedEpisode } from "./library.js";
 import {
@@ -8,6 +17,7 @@ import {
   stripHtml,
   type TvmazeSearchHit,
 } from "./tvmaze.js";
+import { notify } from "./notify.js";
 
 export interface MissingEpisode {
   season: number;
@@ -231,4 +241,67 @@ export function getLastInventory(): LibraryInventoryReport | null {
   } catch {
     return null;
   }
+}
+
+export interface FillGapsResult {
+  showsQueued: number;
+  episodesQueued: number;
+  skippedUnmatched: number;
+  remainingWanted: number;
+}
+
+/**
+ * Turn inventory "missing" episodes into wanted + monitored.
+ * Call monitor separately to start grabbing (worker also runs on an interval).
+ */
+export async function fillInventoryGaps(): Promise<FillGapsResult> {
+  const report = getLastInventory();
+  if (!report?.shows?.length) {
+    throw new Error("No inventory yet — run Build show inventory first");
+  }
+
+  let episodesQueued = 0;
+  let showsQueued = 0;
+  let skippedUnmatched = 0;
+
+  for (const show of report.shows) {
+    if (show.unmatched || !show.seriesId) {
+      if (show.unmatched) skippedUnmatched++;
+      continue;
+    }
+    if (!show.missing.length) continue;
+    if (!getSeriesById(show.seriesId)) continue;
+
+    setSeriesMonitored(show.seriesId, true);
+    let queuedHere = 0;
+    for (const m of show.missing) {
+      const ok = queueEpisodeWanted({
+        seriesId: show.seriesId,
+        season: m.season,
+        episode: m.episode,
+        title: m.title,
+        airdate: m.airdate,
+      });
+      if (ok) {
+        episodesQueued++;
+        queuedHere++;
+      }
+    }
+    if (queuedHere > 0) showsQueued++;
+  }
+
+  const remainingWanted = listWantedEpisodes().length;
+  const msg =
+    `Fill gaps: queued ${episodesQueued} missing eps across ${showsQueued} shows` +
+    (skippedUnmatched ? ` · ${skippedUnmatched} unmatched skipped (rebuild inventory / fix names)` : "") +
+    ` · ${remainingWanted} in grab queue`;
+  addActivity({ kind: "fill-gaps", message: msg });
+  await notify("TV fill gaps", msg);
+
+  return {
+    showsQueued,
+    episodesQueued,
+    skippedUnmatched,
+    remainingWanted,
+  };
 }

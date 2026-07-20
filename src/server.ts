@@ -24,6 +24,7 @@ import {
   listUsers,
   updateUserPassword,
   upsertSeries,
+  listWantedEpisodes,
   type User,
 } from "./db/repo.js";
 import {
@@ -56,6 +57,7 @@ import { scanVideoFiles } from "./services/library.js";
 import {
   buildLibraryInventory,
   getLastInventory,
+  fillInventoryGaps,
 } from "./services/inventory.js";
 
 const SETUP_KEYS = [
@@ -610,6 +612,21 @@ async function handleApi(
 
   if (path === "/api/library/inventory" && method === "GET") {
     sendJson(res, 200, getLastInventory());
+    return true;
+  }
+
+  if (path === "/api/library/fill-gaps" && method === "POST") {
+    const result = await fillInventoryGaps();
+    // Kick several grab rounds now; background worker continues afterward
+    const rounds = Math.min(12, Math.ceil(result.episodesQueued / 6) || 1);
+    for (let i = 0; i < rounds; i++) {
+      await monitorOnce(8);
+      await pollDownloadsOnce();
+    }
+    sendJson(res, 200, {
+      ...result,
+      remainingWantedAfterKick: listWantedEpisodes().length,
+    });
     return true;
   }
 

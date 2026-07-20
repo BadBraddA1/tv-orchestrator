@@ -12,6 +12,7 @@
   const libraryList = document.getElementById("libraryList");
   const inventorySummary = document.getElementById("inventorySummary");
   const inventoryBtn = document.getElementById("inventoryBtn");
+  const fillGapsBtn = document.getElementById("fillGapsBtn");
   const activityList = document.getElementById("activityList");
   const requestList = document.getElementById("requestList");
   const staleList = document.getElementById("staleList");
@@ -612,6 +613,32 @@
       alert(err.message);
     } finally {
       inventoryBtn.disabled = false;
+    }
+  });
+
+  fillGapsBtn.addEventListener("click", async () => {
+    if (
+      !confirm(
+        "Queue every missing episode from matched shows and start grabbing?\n\nUnmatched shows are skipped. This can take a while.",
+      )
+    ) {
+      return;
+    }
+    fillGapsBtn.disabled = true;
+    inventorySummary.textContent = "Queuing missing episodes and kicking NZBGet…";
+    try {
+      const r = await api("/api/library/fill-gaps", { method: "POST" });
+      inventorySummary.textContent =
+        `Queued ${r.episodesQueued} eps across ${r.showsQueued} shows` +
+        (r.skippedUnmatched ? ` · skipped ${r.skippedUnmatched} unmatched` : "") +
+        ` · ${r.remainingWantedAfterKick ?? r.remainingWanted} still in queue (monitor keeps going)`;
+      alert(inventorySummary.textContent);
+      loadActivity();
+    } catch (err) {
+      inventorySummary.textContent = err.message;
+      alert(err.message);
+    } finally {
+      fillGapsBtn.disabled = false;
     }
   });
 

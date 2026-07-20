@@ -328,6 +328,53 @@ export function listActiveDownloads(): EpisodeRow[] {
     .all() as EpisodeRow[];
 }
 
+export function setSeriesMonitored(seriesId: string, monitored: boolean): void {
+  db.prepare(`UPDATE series SET monitored = ?, updated_at = ? WHERE id = ?`).run(
+    monitored ? 1 : 0,
+    nowIso(),
+    seriesId,
+  );
+}
+
+/** Queue an episode for grab unless it is already on disk / in flight. */
+export function queueEpisodeWanted(input: {
+  seriesId: string;
+  season: number;
+  episode: number;
+  title?: string | null;
+  airdate?: string | null;
+}): boolean {
+  const existing = db
+    .prepare(
+      `SELECT * FROM episodes WHERE series_id = ? AND season = ? AND episode = ?`,
+    )
+    .get(input.seriesId, input.season, input.episode) as EpisodeRow | undefined;
+  if (
+    existing &&
+    (existing.status === "available" ||
+      existing.status === "imported" ||
+      existing.status === "snatched" ||
+      existing.status === "downloading")
+  ) {
+    return false;
+  }
+  upsertEpisode({
+    seriesId: input.seriesId,
+    season: input.season,
+    episode: input.episode,
+    title: input.title,
+    airdate: input.airdate,
+    status: "wanted",
+  });
+  const row = db
+    .prepare(
+      `SELECT id FROM episodes WHERE series_id = ? AND season = ? AND episode = ?`,
+    )
+    .get(input.seriesId, input.season, input.episode) as { id: string } | undefined;
+  if (row) updateEpisode(row.id, { status: "wanted", error: null });
+  return true;
+}
+
 export function updateEpisode(
   id: string,
   patch: Partial<{

@@ -144,7 +144,8 @@ Or enter them in the setup walkthrough. **Admin → Send test phone ping** verif
 1. Open **Library → Build show inventory**
 2. Orca walks every video under the TV mount, groups by show name, matches **TVMaze**, and saves a log
 3. For each show it lists seasons you already have files for and any **aired episodes missing** in those seasons (it does not flag seasons you never started)
-4. Auto-discovered shows are added to the DB as **not monitored**, so this will not start downloading the whole catalog — use **Request** (or enable monitoring later) to grab gaps
+4. Auto-discovered shows are added to the DB as **not monitored**, so inventory alone will not start downloading
+5. Click **Grab all missing** to queue every matched gap as wanted, turn monitoring on, and start NZBGet grabs (phone ping + Activity). Unmatched rows are skipped until names match TVMaze
 
 Saved inventory is reused when you reopen Library until you run Build again.
 
