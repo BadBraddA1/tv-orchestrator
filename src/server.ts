@@ -59,6 +59,12 @@ import {
   getLastInventory,
   fillInventoryGaps,
 } from "./services/inventory.js";
+import {
+  markStaleForDelete,
+  cancelPendingDelete,
+  processDueDeletes,
+  pendingDeleteSummary,
+} from "./services/stale.js";
 
 const SETUP_KEYS = [
   "nzbget_url",
@@ -688,8 +694,12 @@ async function handleApi(
       }
     }
 
+    const pending = pendingDeleteSummary();
+    const pendingPaths = new Set(pending.pending.map((p) => p.file_path));
+
     const stale = [];
     for (const file of disk) {
+      if (pendingPaths.has(file.filePath)) continue;
       const plex = plexItems.find(
         (p) =>
           p.grandparentTitle &&
@@ -717,10 +727,108 @@ async function handleApi(
     stale.sort((a, b) => b.size - a.size);
     sendJson(res, 200, {
       staleDays: config.staleDays,
+      graceDays: config.staleDeleteGraceDays,
       plexConnected: await plexConfigured(),
       items: stale.slice(0, 200),
       totalBytes: stale.reduce((n, i) => n + i.size, 0),
+      pending: pending.pending,
+      pendingBytes: pending.totalBytes,
     });
+    return true;
+  }
+
+  if (path === "/api/stale/mark" && method === "POST") {
+    if (auth.user.role !== "admin") {
+      sendJson(res, 403, { error: "Admin only" });
+      return true;
+    }
+    const body = await readJson<{
+      items?: Array<{
+        path: string;
+        show: string;
+        season: number;
+        episode: number;
+        size?: number;
+        reason?: string;
+      }>;
+      all?: boolean;
+    }>(req);
+
+    let items = body.items || [];
+    if (body.all) {
+      // Re-run stale scan and mark everything currently listed
+      const cutoffSec =
+        Math.floor(Date.now() / 1000) - config.staleDays * 86400;
+      const disk = await scanVideoFiles();
+      let plexItems: Awaited<ReturnType<typeof fetchAllEpisodesWithWatch>> = [];
+      if (await plexConfigured()) {
+        try {
+          plexItems = await fetchAllEpisodesWithWatch();
+        } catch {
+          plexItems = [];
+        }
+      }
+      items = [];
+      for (const file of disk) {
+        const plex = plexItems.find(
+          (p) =>
+            p.grandparentTitle &&
+            normalize(p.grandparentTitle) === normalize(file.showHint) &&
+            p.parentIndex === file.season &&
+            p.index === file.episode,
+        );
+        const lastViewed = plex?.lastViewedAt || 0;
+        const viewCount = plex?.viewCount || 0;
+        const neverWatched = viewCount === 0 && !lastViewed;
+        const oldWatch = lastViewed > 0 && lastViewed < cutoffSec;
+        if (neverWatched || oldWatch) {
+          items.push({
+            path: file.filePath,
+            show: file.showHint,
+            season: file.season,
+            episode: file.episode,
+            size: file.size,
+            reason: neverWatched ? "never_watched" : "not_watched_recently",
+          });
+        }
+      }
+    }
+
+    if (!items.length) {
+      sendJson(res, 400, { error: "No items to mark" });
+      return true;
+    }
+    const result = markStaleForDelete(items, auth.user.id);
+    await notify(
+      "TV cleanup scheduled",
+      `${result.marked} file(s) marked — delete after ${config.staleDeleteGraceDays}d unless watched`,
+    );
+    sendJson(res, 200, result);
+    return true;
+  }
+
+  if (path === "/api/stale/cancel" && method === "POST") {
+    if (auth.user.role !== "admin") {
+      sendJson(res, 403, { error: "Admin only" });
+      return true;
+    }
+    const body = await readJson<{ id?: string }>(req);
+    if (!body.id) {
+      sendJson(res, 400, { error: "id required" });
+      return true;
+    }
+    const ok = cancelPendingDelete(body.id);
+    sendJson(res, ok ? 200 : 404, ok ? { ok: true } : { error: "Not found or not pending" });
+    return true;
+  }
+
+  if (path === "/api/stale/process" && method === "POST") {
+    if (auth.user.role !== "admin") {
+      sendJson(res, 403, { error: "Admin only" });
+      return true;
+    }
+    const result = await processDueDeletes();
+    sendJson(res, 200, result);
     return true;
   }
 
@@ -780,4 +888,12 @@ export async function startServer(): Promise<void> {
   setInterval(() => {
     void pollDownloadsOnce().catch((e) => console.warn("[import]", e));
   }, config.importIntervalMs);
+
+  setInterval(() => {
+    void processDueDeletes().catch((e) => console.warn("[stale]", e));
+  }, 60 * 60 * 1000); // hourly
+  // Kick once shortly after boot in case deletes came due while offline
+  setTimeout(() => {
+    void processDueDeletes().catch((e) => console.warn("[stale]", e));
+  }, 20_000);
 }

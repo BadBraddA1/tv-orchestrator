@@ -99,6 +99,14 @@
 
         <div id="tab-cleanup" class="tab-panel" hidden>
           <p id="staleSummary" class="sub"></p>
+          <div class="toolbar admin-only" hidden>
+            <button type="button" id="markSelectedBtn">Mark selected (delete in 2d)</button>
+            <button type="button" id="markAllStaleBtn" class="ghost">Mark all listed</button>
+            <button type="button" id="processDueBtn" class="ghost">Process due now</button>
+          </div>
+          <h2 class="section-title" id="pendingTitle" hidden>Pending deletes</h2>
+          <div id="pendingList" class="stale-list"></div>
+          <h2 class="section-title">Stale on disk</h2>
           <div id="staleList" class="stale-list"></div>
         </div>
 
@@ -128,6 +136,6 @@
         </div>
       </section>
     </div>
-    <script src="/js/app.js?v=selfupdate2"></script>
+    <script src="/js/app.js?v=stale-delete1"></script>
   </body>
 </html>

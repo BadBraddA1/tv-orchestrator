@@ -82,8 +82,25 @@ export function migrate(): void {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS pending_deletes (
+      id TEXT PRIMARY KEY,
+      file_path TEXT NOT NULL UNIQUE,
+      show_title TEXT NOT NULL,
+      season INTEGER NOT NULL,
+      episode INTEGER NOT NULL,
+      size INTEGER NOT NULL DEFAULT 0,
+      reason TEXT,
+      marked_at TEXT NOT NULL,
+      delete_after TEXT NOT NULL,
+      marked_by TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      resolved_at TEXT,
+      note TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_episodes_status ON episodes(status);
     CREATE INDEX IF NOT EXISTS idx_activity_created ON activity(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_pending_deletes_status ON pending_deletes(status, delete_after);
   `);
 }

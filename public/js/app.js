@@ -16,7 +16,12 @@
   const activityList = document.getElementById("activityList");
   const requestList = document.getElementById("requestList");
   const staleList = document.getElementById("staleList");
+  const pendingList = document.getElementById("pendingList");
+  const pendingTitle = document.getElementById("pendingTitle");
   const staleSummary = document.getElementById("staleSummary");
+  const markSelectedBtn = document.getElementById("markSelectedBtn");
+  const markAllStaleBtn = document.getElementById("markAllStaleBtn");
+  const processDueBtn = document.getElementById("processDueBtn");
   const userForm = document.getElementById("userForm");
   const userList = document.getElementById("userList");
   const healthBox = document.getElementById("healthBox");
@@ -535,33 +540,133 @@
     }
   }
 
+  let lastStaleItems = [];
+
   async function loadStale() {
     staleList.innerHTML = "<p class='sub'>Scanning…</p>";
+    pendingList.replaceChildren();
     const data = await api("/api/stale");
+    lastStaleItems = data.items || [];
     const gb = (data.totalBytes / 1e9).toFixed(1);
+    const grace = data.graceDays ?? 2;
+    const pendGb = ((data.pendingBytes || 0) / 1e9).toFixed(2);
     staleSummary.textContent = data.plexConnected
-      ? `${data.items.length} stale items (~${gb} GB). Not watched in ${data.staleDays} days (or never).`
-      : `${data.items.length} candidates by disk scan. Add Plex token in setup for watch-based stale detection.`;
+      ? `${data.items.length} stale (~${gb} GB). Mark → delete in ${grace}d unless watched. ${data.pending?.length || 0} pending (~${pendGb} GB).`
+      : `${data.items.length} candidates. Add Plex token for watch-based stale + grace-period spare.`;
+
+    if (data.pending?.length) {
+      pendingTitle.hidden = false;
+      pendingTitle.textContent = `Pending deletes (${data.pending.length})`;
+      for (const p of data.pending) {
+        const row = document.createElement("div");
+        row.className = "row";
+        const when = new Date(p.delete_after).toLocaleString();
+        row.innerHTML = `<div class="row-top">
+            <strong>${escapeHtml(p.show_title)} S${String(p.season).padStart(2, "0")}E${String(p.episode).padStart(2, "0")}</strong>
+            <span class="chip warn">deletes ${when}</span>
+          </div>
+          <p class="meta">${(p.size / 1e6).toFixed(0)} MB · ${escapeHtml(p.reason || "")}</p>
+          <p class="meta">${escapeHtml(p.file_path)}</p>
+          <button type="button" class="ghost cancel-pending" data-id="${escapeHtml(p.id)}">Cancel</button>`;
+        pendingList.appendChild(row);
+      }
+      pendingList.querySelectorAll(".cancel-pending").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          await api("/api/stale/cancel", {
+            method: "POST",
+            body: JSON.stringify({ id: btn.getAttribute("data-id") }),
+          });
+          loadStale();
+          loadActivity();
+        });
+      });
+    } else {
+      pendingTitle.hidden = true;
+      pendingList.innerHTML = "";
+    }
+
     staleList.replaceChildren();
     if (!data.items.length) {
-      staleList.innerHTML = "<p class='sub'>Nothing looks stale. Nice.</p>";
+      staleList.innerHTML = "<p class='sub'>Nothing looks stale (or all are already marked).</p>";
       return;
     }
     for (const item of data.items) {
       const row = document.createElement("div");
-      row.className = "row";
+      row.className = "row stale-row";
       const watched = item.lastViewedAt
         ? new Date(item.lastViewedAt * 1000).toLocaleDateString()
         : "never";
-      row.innerHTML = `<div class="row-top">
-          <strong>${escapeHtml(item.show)} S${String(item.season).padStart(2, "0")}E${String(item.episode).padStart(2, "0")}</strong>
-          <span class="chip warn">${escapeHtml(item.reason)}</span>
-        </div>
+      row.innerHTML = `<label class="stale-check">
+          <input type="checkbox" class="stale-cb" data-path="${escapeHtml(item.path)}" />
+          <span class="row-top">
+            <strong>${escapeHtml(item.show)} S${String(item.season).padStart(2, "0")}E${String(item.episode).padStart(2, "0")}</strong>
+            <span class="chip warn">${escapeHtml(item.reason)}</span>
+          </span>
+        </label>
         <p class="meta">${(item.size / 1e6).toFixed(0)} MB · last watched ${watched}</p>
         <p class="meta">${escapeHtml(item.path)}</p>`;
       staleList.appendChild(row);
     }
   }
+
+  async function markStale(items) {
+    if (!items.length) {
+      alert("Select at least one file");
+      return;
+    }
+    const grace = 2;
+    if (
+      !confirm(
+        `Mark ${items.length} file(s) for deletion in ${grace} days?\n\nIf someone watches them before then, they will be spared.`,
+      )
+    ) {
+      return;
+    }
+    const r = await api("/api/stale/mark", {
+      method: "POST",
+      body: JSON.stringify({ items }),
+    });
+    alert(`Marked ${r.marked}. Deletes after ${new Date(r.deleteAfter).toLocaleString()}`);
+    loadStale();
+    loadActivity();
+  }
+
+  markSelectedBtn?.addEventListener("click", async () => {
+    const selected = new Set(
+      [...staleList.querySelectorAll(".stale-cb:checked")].map((cb) =>
+        cb.getAttribute("data-path"),
+      ),
+    );
+    const items = lastStaleItems.filter((i) => selected.has(i.path));
+    try {
+      await markStale(items);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  markAllStaleBtn?.addEventListener("click", async () => {
+    if (!lastStaleItems.length) return;
+    try {
+      await markStale(lastStaleItems);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
+  processDueBtn?.addEventListener("click", async () => {
+    processDueBtn.disabled = true;
+    try {
+      const r = await api("/api/stale/process", { method: "POST" });
+      alert(`Deleted ${r.deleted} · spared ${r.spared} · failed ${r.failed}`);
+      loadStale();
+      loadActivity();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      processDueBtn.disabled = false;
+    }
+  });
 
   async function loadAdmin() {
     const users = await api("/api/users");

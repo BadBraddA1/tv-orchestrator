@@ -125,6 +125,17 @@ Paste Newznab API keys:
 - `PLEX_URL=http://plex-host:32400`
 - `PLEX_TOKEN=...` (from plex.tv / account)
 
+### Cleanup / offload
+
+**Cleanup** tab lists episodes not watched in `STALE_DAYS` (default 365) or never watched.
+
+Admins can **mark** files for deletion. After `STALE_DELETE_GRACE_DAYS` (default **2**), orca deletes them **only if** Plex shows no watch during the grace window. Cancel anytime from Pending deletes. Only paths under the TV library mount are touched.
+
+```bash
+STALE_DAYS=365
+STALE_DELETE_GRACE_DAYS=2
+```
+
 ### Push notifications
 
 Optional (required if you want phone pings when grabs fail/succeed):
@@ -146,7 +157,7 @@ Or enter them in the setup walkthrough. **Admin → Send test phone ping** verif
 | Library | **Full disk inventory** of every show on `/media/tv`, plus missing episodes in seasons you already own |
 | Activity | Live trail of requests/snatches/imports/failures |
 | Requests | Who requested what |
-| Cleanup | Stale unwatched disk usage |
+| Cleanup | Stale unwatched files — mark for delete (2-day grace; spared if watched) |
 | Admin | Add users, health check, run monitor |
 
 ### Library inventory

@@ -277,6 +277,30 @@ label {
   margin: 0.75rem 0 1rem;
 }
 
+.section-title {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.65rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.stale-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  align-items: start;
+  cursor: pointer;
+}
+
+.stale-check input {
+  width: auto;
+  margin-top: 0.35rem;
+}
+
+.cancel-pending {
+  margin-top: 0.5rem;
+}
+
 .chip {
   display: inline-block;
   font-size: 0.72rem;

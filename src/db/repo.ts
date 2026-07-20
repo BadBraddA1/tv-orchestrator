@@ -437,3 +437,124 @@ export function listRequests(limit = 50): Array<
     RequestRow & { username: string; series_title: string; poster_url: string | null }
   >;
 }
+
+export type PendingDeleteStatus = "pending" | "deleted" | "cancelled" | "failed";
+
+export interface PendingDeleteRow {
+  id: string;
+  file_path: string;
+  show_title: string;
+  season: number;
+  episode: number;
+  size: number;
+  reason: string | null;
+  marked_at: string;
+  delete_after: string;
+  marked_by: string | null;
+  status: PendingDeleteStatus;
+  resolved_at: string | null;
+  note: string | null;
+}
+
+export function upsertPendingDelete(input: {
+  filePath: string;
+  showTitle: string;
+  season: number;
+  episode: number;
+  size: number;
+  reason?: string | null;
+  deleteAfter: string;
+  markedBy?: string | null;
+}): PendingDeleteRow {
+  const ts = nowIso();
+  const existing = db
+    .prepare(`SELECT * FROM pending_deletes WHERE file_path = ?`)
+    .get(input.filePath) as PendingDeleteRow | undefined;
+  if (existing && existing.status === "pending") {
+    db.prepare(
+      `UPDATE pending_deletes SET show_title=@show_title, season=@season, episode=@episode,
+       size=@size, reason=@reason, marked_at=@marked_at, delete_after=@delete_after,
+       marked_by=@marked_by, note=NULL WHERE id=@id`,
+    ).run({
+      id: existing.id,
+      show_title: input.showTitle,
+      season: input.season,
+      episode: input.episode,
+      size: input.size,
+      reason: input.reason ?? null,
+      marked_at: ts,
+      delete_after: input.deleteAfter,
+      marked_by: input.markedBy ?? null,
+    });
+    return db.prepare(`SELECT * FROM pending_deletes WHERE id = ?`).get(existing.id) as PendingDeleteRow;
+  }
+  const row: PendingDeleteRow = {
+    id: nanoid(),
+    file_path: input.filePath,
+    show_title: input.showTitle,
+    season: input.season,
+    episode: input.episode,
+    size: input.size,
+    reason: input.reason ?? null,
+    marked_at: ts,
+    delete_after: input.deleteAfter,
+    marked_by: input.markedBy ?? null,
+    status: "pending",
+    resolved_at: null,
+    note: null,
+  };
+  db.prepare(
+    `INSERT INTO pending_deletes
+     (id, file_path, show_title, season, episode, size, reason, marked_at, delete_after, marked_by, status, resolved_at, note)
+     VALUES (@id, @file_path, @show_title, @season, @episode, @size, @reason, @marked_at, @delete_after, @marked_by, @status, @resolved_at, @note)
+     ON CONFLICT(file_path) DO UPDATE SET
+       show_title=excluded.show_title, season=excluded.season, episode=excluded.episode,
+       size=excluded.size, reason=excluded.reason, marked_at=excluded.marked_at,
+       delete_after=excluded.delete_after, marked_by=excluded.marked_by,
+       status='pending', resolved_at=NULL, note=NULL`,
+  ).run(row);
+  return db
+    .prepare(`SELECT * FROM pending_deletes WHERE file_path = ?`)
+    .get(input.filePath) as PendingDeleteRow;
+}
+
+export function listPendingDeletes(status: PendingDeleteStatus | "all" = "pending"): PendingDeleteRow[] {
+  if (status === "all") {
+    return db
+      .prepare(`SELECT * FROM pending_deletes ORDER BY delete_after ASC`)
+      .all() as PendingDeleteRow[];
+  }
+  return db
+    .prepare(`SELECT * FROM pending_deletes WHERE status = ? ORDER BY delete_after ASC`)
+    .all(status) as PendingDeleteRow[];
+}
+
+export function getPendingDelete(id: string): PendingDeleteRow | undefined {
+  return db.prepare(`SELECT * FROM pending_deletes WHERE id = ?`).get(id) as
+    | PendingDeleteRow
+    | undefined;
+}
+
+export function resolvePendingDelete(
+  id: string,
+  status: PendingDeleteStatus,
+  note?: string | null,
+): void {
+  db.prepare(
+    `UPDATE pending_deletes SET status = ?, resolved_at = ?, note = ? WHERE id = ?`,
+  ).run(status, nowIso(), note ?? null, id);
+}
+
+export function listDuePendingDeletes(nowIsoStr: string): PendingDeleteRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM pending_deletes WHERE status = 'pending' AND delete_after <= ? ORDER BY delete_after ASC`,
+    )
+    .all(nowIsoStr) as PendingDeleteRow[];
+}
+
+export function clearEpisodeFilePath(filePath: string): void {
+  db.prepare(
+    `UPDATE episodes SET file_path = NULL, status = CASE WHEN status IN ('available','imported') THEN 'wanted' ELSE status END, updated_at = ? WHERE file_path = ?`,
+  ).run(nowIso(), filePath);
+}

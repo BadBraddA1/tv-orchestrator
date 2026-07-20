@@ -32,6 +32,7 @@ export type AppConfig = {
   downloads: string;
   autoApprove: boolean;
   staleDays: number;
+  staleDeleteGraceDays: number;
   monitorIntervalMs: number;
   importIntervalMs: number;
   adminUser: string;
@@ -57,6 +58,7 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
     downloads: resolve(process.cwd(), str("DOWNLOADS", "./media/downloads")),
     autoApprove: bool("AUTO_APPROVE", true),
     staleDays: int("STALE_DAYS", 365),
+    staleDeleteGraceDays: int("STALE_DELETE_GRACE_DAYS", 2),
     monitorIntervalMs: int("MONITOR_INTERVAL_MS", 120_000),
     importIntervalMs: int("IMPORT_INTERVAL_MS", 30_000),
     adminUser: str("ADMIN_USER", "brad"),
