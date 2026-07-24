@@ -1,7 +1,7 @@
 {
   "name": "tv-orchestrator",
-  "version": "1.1.0",
-  "description": "Orca — household TV & movie request portal + NZBGet grab/import for Docker/Proxmox",
+  "version": "1.2.0",
+  "description": "Orca Broadcast — Live TV station director (schedule → staging → ErsatzTV → Plex) + legacy library tools",
   "private": true,
   "type": "module",
   "scripts": {

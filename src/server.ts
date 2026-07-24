@@ -81,7 +81,8 @@ import {
   getSimilarMovies,
 } from "./services/tmdb.js";
 import { monitorMoviesOnce, pollMovieDownloadsOnce } from "./workers/movies.js";
-import { maintainChannelsOnce } from "./workers/channels.js";
+import { maintainChannelsOnce, getBroadcastGuide, listStagingTree } from "./workers/channels.js";
+import { probeErsatzTv, plexTunerSetupHints } from "./services/ersatztv.js";
 import {
   tautulliConfigured,
   getActivity,
@@ -829,6 +830,26 @@ async function handleApi(
       active: countActiveHopperItems(c.id),
     }));
     sendJson(res, 200, all);
+    return true;
+  }
+
+  if (path === "/api/broadcast/guide" && method === "GET") {
+    const hours = Number.parseInt(url.searchParams.get("hours") || "12", 10);
+    sendJson(res, 200, getBroadcastGuide(Number.isFinite(hours) ? hours : 12));
+    return true;
+  }
+
+  if (path === "/api/broadcast/staging" && method === "GET") {
+    sendJson(res, 200, { stations: await listStagingTree() });
+    return true;
+  }
+
+  if (path === "/api/broadcast/ersatztv" && method === "GET") {
+    const probe = await probeErsatzTv();
+    sendJson(res, 200, {
+      ...probe,
+      hints: plexTunerSetupHints(),
+    });
     return true;
   }
 

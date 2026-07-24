@@ -85,7 +85,7 @@
           <button type="button" data-tab="search" class="tab active">TV</button>
           <button type="button" data-tab="movies" class="tab">Movies</button>
           <button type="button" data-tab="movie-library" class="tab">Movie library</button>
-          <button type="button" data-tab="channels" class="tab">Channels</button>
+          <button type="button" data-tab="channels" class="tab">Broadcast</button>
           <button type="button" data-tab="library" class="tab">TV library</button>
           <button type="button" data-tab="downloads" class="tab">Downloads</button>
           <button type="button" data-tab="activity" class="tab">Activity</button>
@@ -137,17 +137,20 @@
         <div id="tab-channels" class="tab-panel" hidden>
           <div class="cleanup-hero">
             <div>
-              <p class="eyebrow">24/7 hoppers</p>
-              <h2 class="panel-heading">Channels</h2>
+              <p class="eyebrow">Orca Broadcast · Live TV</p>
+              <h2 class="panel-heading">Stations &amp; guide</h2>
               <p class="sub">
-                Keep a short stack of fresh titles. When something is watched (via Tautulli), orca drops it and grabs the next.
+                Download into a staging folder → air on Plex Live TV (via ErsatzTV) → delete after the slot.
+                Files never land in your normal Movies/TV libraries (Seerr owns those).
               </p>
             </div>
             <div class="toolbar admin-only" hidden>
-              <button type="button" id="maintainChannelsBtn">Refill hoppers now</button>
+              <button type="button" id="maintainChannelsBtn">Refresh schedule / fill</button>
             </div>
           </div>
+          <div id="ersatzStatus" class="sub"></div>
           <div id="nowPlaying" class="now-playing" hidden></div>
+          <div id="broadcastGuide" class="broadcast-guide"></div>
           <div id="channelsList" class="stale-grid"></div>
         </div>
 

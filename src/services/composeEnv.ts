@@ -11,6 +11,7 @@ const HOST_KEYS = [
   "TV_LIBRARY_HOST",
   "MOVIE_LIBRARY_HOST",
   "DOWNLOADS_HOST",
+  "CHANNELS_STAGING_HOST",
 ] as const;
 
 export type HostPathMap = Partial<Record<(typeof HOST_KEYS)[number], string>>;
@@ -80,6 +81,7 @@ function serializeComposeEnv(map: Record<string, string>): string {
     "TV_LIBRARY_HOST",
     "MOVIE_LIBRARY_HOST",
     "DOWNLOADS_HOST",
+    "CHANNELS_STAGING_HOST",
     "COMPOSE_HOST_DIR",
   ];
   const seen = new Set<string>();
@@ -124,6 +126,7 @@ export async function writeHostPaths(input: {
   tvLibraryHost?: string;
   movieLibraryHost?: string;
   downloadsHost?: string;
+  channelsStagingHost?: string;
 }): Promise<{ ok: boolean; needsRemount: boolean; message: string; path?: string }> {
   const dir = await resolveHostProjectDir();
   if (!dir) {
@@ -155,6 +158,7 @@ export async function writeHostPaths(input: {
   apply("TV_LIBRARY_HOST", input.tvLibraryHost);
   apply("MOVIE_LIBRARY_HOST", input.movieLibraryHost);
   apply("DOWNLOADS_HOST", input.downloadsHost);
+  apply("CHANNELS_STAGING_HOST", input.channelsStagingHost);
 
   if (!changed) {
     return {

@@ -152,12 +152,45 @@ export function migrate(): void {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS schedule_blocks (
+      id TEXT PRIMARY KEY,
+      station_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+      start_at TEXT NOT NULL,
+      end_at TEXT NOT NULL,
+      title TEXT NOT NULL,
+      subtitle TEXT,
+      kind TEXT NOT NULL DEFAULT 'tv',
+      tmdb_id INTEGER,
+      tvmaze_id INTEGER,
+      season INTEGER,
+      episode INTEGER,
+      status TEXT NOT NULL DEFAULT 'planned',
+      file_path TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS staging_files (
+      id TEXT PRIMARY KEY,
+      station_id TEXT NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+      block_id TEXT REFERENCES schedule_blocks(id) ON DELETE SET NULL,
+      path TEXT NOT NULL UNIQUE,
+      bytes INTEGER NOT NULL DEFAULT 0,
+      delete_after TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_episodes_status ON episodes(status);
     CREATE INDEX IF NOT EXISTS idx_activity_created ON activity(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS idx_pending_deletes_status ON pending_deletes(status, delete_after);
     CREATE INDEX IF NOT EXISTS idx_movies_status ON movies(status);
     CREATE INDEX IF NOT EXISTS idx_channel_items_status ON channel_items(channel_id, status);
+    CREATE INDEX IF NOT EXISTS idx_schedule_blocks_station_start ON schedule_blocks(station_id, start_at);
+    CREATE INDEX IF NOT EXISTS idx_schedule_blocks_status ON schedule_blocks(status, start_at);
+    CREATE INDEX IF NOT EXISTS idx_staging_files_delete ON staging_files(delete_after);
   `);
 
   // Durable retry columns (safe to re-run)
@@ -169,9 +202,15 @@ export function migrate(): void {
   addColumnIfMissing("movies", "next_retry_at", "TEXT");
   addColumnIfMissing("movies", "import_attempts", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("movies", "blocked_releases", "TEXT");
+  // Broadcast / Live-TV station fields on channels
+  addColumnIfMissing("channels", "channel_number", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("channels", "slug", "TEXT");
+  addColumnIfMissing("channels", "lead_hours", "INTEGER NOT NULL DEFAULT 6");
+  addColumnIfMissing("channels", "block_minutes", "INTEGER NOT NULL DEFAULT 30");
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_episodes_next_retry ON episodes(status, next_retry_at);
     CREATE INDEX IF NOT EXISTS idx_movies_next_retry ON movies(status, next_retry_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_channels_slug ON channels(slug) WHERE slug IS NOT NULL;
   `);
 
   // One-time: re-queue legacy hard-failed rows into durable retry

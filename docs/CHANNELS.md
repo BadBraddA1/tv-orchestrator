@@ -1,48 +1,41 @@
-# Orca roadmap: Netflix-y household media
+# Orca Broadcast — channels & schedule
 
-## What you asked for
+## Product
 
-1. **Click something → see Tautulli usage** (who watched, when, how often)
-2. **Want it but don’t have it → auto-grab** (already started for TV gaps + movie request; extend to recs)
-3. **“If you liked this…”** recommendations that can request/grab
-4. **24/7 TV “stations” / hoppers** — keep a short queue of fresh stuff (Cops, Drama, hot movies), drop after play, refill
+Virtual **TV stations** for Plex **Live TV** (tuner + guide), not a normal library shelf.
 
-## How hoppers work (the model we ship)
+| Channel | # | Slug | Source |
+|---------|---|------|--------|
+| Cops 24/7 | 3 | `cops` | Cops (TVMaze) |
+| Comedy | 5 | `comedy` | Comedy search (mixed TV/movies) |
+| Below Deck | 7 | `below-deck` | Below Deck franchise |
+| Kitchen Heat | 9 | `kitchen-heat` | Kitchen Nightmares / food reality |
+| Toon Box | 11 | `toon-box` | Bluey / animation block |
 
-Each **channel** is a virtual station:
+## Lifecycle of a slot
 
-| Setting | Meaning |
-|--------|---------|
-| Name | e.g. `Cops 24/7`, `Drama Night`, `Hot Movies` |
-| Kind | `movie` or `tv` |
-| Source | TMDB trending / genre keyword / show search |
-| Hopper size | Keep N titles/episodes ready (default 8) |
-| After watch | Delete file from disk (grace 0–1 day) and fill a new one |
+1. Scheduler writes `schedule_blocks` out to `BROADCAST_HORIZON_HOURS` (default 36).
+2. Within `BROADCAST_LEAD_HOURS` (default 6), Orca searches NZBs and sends to NZBGet category **`orca-tv`**.
+3. Finished downloads are moved into `CHANNELS_STAGING/<slug>/` (status `ready`).
+4. While `start_at ≤ now < end_at`, status is `airing`.
+5. After `end_at`, file is deleted from staging (skipped if still airing).
 
-Plex just sees normal library folders (or a dedicated `Channels/` path later). Orca is the brain: stock → track play via Tautulli → drop → restock.
+## Paths
 
-## Build order
+- Staging: `CHANNELS_STAGING` / host `CHANNELS_STAGING_HOST` → e.g. `/mnt/plex/rip/channels`
+- **Do not** add staging as a Plex Movies/TV library
+- ErsatzTV mounts the same folder and exposes an HDHomeRun-compatible tuner on **:8409**
 
-### Phase 1 — Tautulli (this ship)
-- Connect URL + API key in setup
-- Live **Now Playing**
-- Click a show/movie → usage panel (history from Tautulli)
-- Activity feed enriched when configured
+## API
 
-### Phase 2 — Hoppers / channels (started with scaffolding)
-- Channels tab: create presets + refill
-- Hopper items queue + auto-grab into library
-- Drop-after-watch when Tautulli shows a play
+- `GET /api/broadcast/guide?hours=12` — stations + blocks
+- `GET /api/broadcast/staging` — per-station file counts
+- `GET /api/broadcast/ersatztv` — tuner health + setup hints
+- `POST /api/channels/maintain` — generate schedule, grab, stage, cleanup (admin)
 
-### Phase 3 — Recommendations
-- From recent Tautulli watches → TMDB/TVMaze similar
-- One-tap **Request** (or auto if you enable “auto-grab likes”)
+## Seerr boundary
 
-## Credentials
+Family “put this on Plex permanently” → **Seerr**.  
+Lean-back “what’s on Cops right now” → **Orca Broadcast + Plex Live TV**.
 
-Setup walkthrough → **Tautulli** step, or:
-
-```bash
-TAUTULLI_URL=http://10.0.0.x:8181
-TAUTULLI_API_KEY=...
-```
+Wire-up steps: **[ERSATZTV.md](ERSATZTV.md)**.

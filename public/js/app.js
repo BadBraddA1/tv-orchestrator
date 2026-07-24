@@ -19,6 +19,8 @@
   const movieLibraryFilter = document.getElementById("movieLibraryFilter");
   const movieLibraryFilterForm = document.getElementById("movieLibraryFilterForm");
   const channelsList = document.getElementById("channelsList");
+  const broadcastGuide = document.getElementById("broadcastGuide");
+  const ersatzStatus = document.getElementById("ersatzStatus");
   const nowPlaying = document.getElementById("nowPlaying");
   const maintainChannelsBtn = document.getElementById("maintainChannelsBtn");
   const usageDrawer = document.getElementById("usageDrawer");
@@ -989,12 +991,13 @@
   async function loadChannels() {
     if (!channelsList) return;
     channelsList.innerHTML = "<p class='sub'>Loading…</p>";
+    if (broadcastGuide) broadcastGuide.innerHTML = "<p class='sub'>Loading guide…</p>";
     try {
-      const usage = await api("/api/usage");
+      const usage = await api("/api/usage").catch(() => ({ configured: false }));
       if (nowPlaying) {
         if (usage.configured && usage.nowPlaying?.length) {
           nowPlaying.hidden = false;
-          nowPlaying.innerHTML = `<p class="eyebrow">Now playing</p>${usage.nowPlaying
+          nowPlaying.innerHTML = `<p class="eyebrow">Now playing (Plex)</p>${usage.nowPlaying
             .map(
               (s) =>
                 `<div class="row"><strong>${escapeHtml(s.friendly_name || s.user || "user")}</strong><p class="meta">${escapeHtml(s.full_title || s.title || "")} · ${s.progress_percent ?? 0}%</p></div>`,
@@ -1005,31 +1008,71 @@
           nowPlaying.innerHTML = "";
         }
       }
-      const channels = await api("/api/channels");
+
+      const [guide, ersatz] = await Promise.all([
+        api("/api/broadcast/guide?hours=12"),
+        api("/api/broadcast/ersatztv").catch(() => null),
+      ]);
+
+      if (ersatzStatus) {
+        if (ersatz?.ok) {
+          ersatzStatus.innerHTML = `<span class="chip ok">ErsatzTV up</span> <span class="meta">${escapeHtml(ersatz.url)} — add as Plex Live TV tuner</span>`;
+        } else {
+          ersatzStatus.innerHTML = `<span class="chip warn">ErsatzTV</span> <span class="meta">${escapeHtml(ersatz?.error || "unreachable")} · staging ${escapeHtml(guide.stagingRoot || "")}</span>`;
+        }
+      }
+
+      if (broadcastGuide) {
+        broadcastGuide.replaceChildren();
+        const byStation = new Map();
+        for (const st of guide.stations || []) byStation.set(st.id, []);
+        for (const b of guide.blocks || []) {
+          if (!byStation.has(b.station_id)) byStation.set(b.station_id, []);
+          byStation.get(b.station_id).push(b);
+        }
+        for (const st of guide.stations || []) {
+          const col = document.createElement("div");
+          col.className = "guide-station";
+          const blocks = byStation.get(st.id) || [];
+          const rows = blocks
+            .slice(0, 16)
+            .map((b) => {
+              const start = new Date(b.start_at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              const end = new Date(b.end_at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+              return `<div class="guide-block status-${escapeHtml(b.status)}">
+                <span class="guide-time">${start}–${end}</span>
+                <strong>${escapeHtml(b.title)}</strong>
+                <span class="meta">${escapeHtml(b.subtitle || "")} · ${escapeHtml(b.status)}</span>
+              </div>`;
+            })
+            .join("");
+          col.innerHTML = `<div class="guide-head"><span class="chip">Ch ${st.channel_number || "?"}</span> <strong>${escapeHtml(st.name)}</strong>
+            <span class="meta">${escapeHtml(st.slug || "")} · ${st.stagingCount || 0} staged</span></div>
+            <div class="guide-blocks">${rows || "<p class='meta'>No slots yet — hit Refresh schedule</p>"}</div>`;
+          broadcastGuide.appendChild(col);
+        }
+      }
+
       channelsList.replaceChildren();
-      for (const ch of channels) {
+      for (const ch of guide.stations || []) {
         const card = document.createElement("div");
         card.className = "pending-card channel-card";
-        const items = (ch.items || [])
-          .filter((i) => ["wanted", "snatched", "available"].includes(i.status))
-          .slice(0, 8)
-          .map(
-            (i) =>
-              `<li><button type="button" class="linkish" data-title="${escapeHtml(i.title)}">${escapeHtml(i.title)}${i.year ? ` (${i.year})` : ""}</button> <span class="chip ${i.status === "available" ? "ok" : "warn"}">${escapeHtml(i.status)}</span></li>`,
-          )
-          .join("");
+        const mb = Math.round((ch.stagingBytes || 0) / (1024 * 1024));
         card.innerHTML = `<div class="body" style="grid-column:1/-1">
-          <div class="row-top"><strong>${escapeHtml(ch.name)}</strong><span class="chip">${ch.kind} · ${ch.active}/${ch.hopper_size}</span></div>
-          <p class="meta">${escapeHtml(ch.source)}${ch.query ? ` · ${escapeHtml(ch.query)}` : ""} · drop after watch: ${ch.drop_after_watch ? "yes" : "no"}</p>
-          <ul class="hopper-list">${items || "<li class='meta'>Empty — refill to stock</li>"}</ul>
+          <div class="row-top"><strong>${escapeHtml(ch.name)}</strong><span class="chip">Ch ${ch.channel_number} · ${escapeHtml(ch.kind)}</span></div>
+          <p class="meta">query: ${escapeHtml(ch.query || ch.name)} · lead ${ch.lead_hours || 6}h · block ${ch.block_minutes || 30}m · staging ${ch.stagingCount || 0} file(s) (${mb} MB)</p>
         </div>`;
         channelsList.appendChild(card);
-        card.querySelectorAll("[data-title]").forEach((btn) => {
-          btn.addEventListener("click", () => openUsage(btn.getAttribute("data-title")));
-        });
       }
     } catch (err) {
       channelsList.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+      if (broadcastGuide) broadcastGuide.innerHTML = "";
     }
   }
 
@@ -1037,7 +1080,9 @@
     maintainChannelsBtn.disabled = true;
     try {
       const r = await api("/api/channels/maintain", { method: "POST" });
-      alert(`Filled ${r.filled}, dropped ${r.dropped}`);
+      alert(
+        `Schedule +${r.scheduled || 0}, grabbed ${r.grabbed || 0}, staged ${r.moved || 0}, deleted ${r.deleted || 0}`,
+      );
       loadChannels();
       loadActivity();
     } catch (err) {

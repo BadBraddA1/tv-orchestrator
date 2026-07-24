@@ -57,11 +57,17 @@ export type AppConfig = {
   tvLibrary: string;
   movieLibrary: string;
   downloads: string;
+  /** Live-TV staging — NOT a Plex library. ErsatzTV reads from here. */
+  channelsStaging: string;
   autoApprove: boolean;
   staleDays: number;
   staleDeleteGraceDays: number;
   monitorIntervalMs: number;
   importIntervalMs: number;
+  /** How far ahead (hours) to fill schedule blocks / downloads */
+  broadcastLeadHours: number;
+  /** How many hours of schedule to keep generated */
+  broadcastHorizonHours: number;
   adminUser: string;
   adminPass: string;
   sessionSecret: string;
@@ -74,6 +80,8 @@ export type AppConfig = {
     pass: string;
     category: string;
     movieCategory: string;
+    /** Broadcast Live-TV grabs (staging only) */
+    broadcastCategory: string;
     /** NZBGet's on-disk path prefix that maps to Orca DOWNLOADS (/media/downloads) */
     pathPrefix: string;
   };
@@ -82,6 +90,7 @@ export type AppConfig = {
   tmdb: { apiKey: string };
   tautulli: { url: string; apiKey: string };
   plex: { url: string; token: string };
+  ersatztv: { url: string };
   pushover: { userKey: string; appToken: string };
   ntfy: { topic: string; server: string };
   /** Labels for host-side mounts (written to .compose.env) */
@@ -89,6 +98,7 @@ export type AppConfig = {
     tvLibrary: string;
     movieLibrary: string;
     downloads: string;
+    channelsStaging: string;
   };
 };
 
@@ -100,6 +110,10 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
     tvLibrary: resolve(process.cwd(), str("TV_LIBRARY", "./media/tv")),
     movieLibrary: resolve(process.cwd(), str("MOVIE_LIBRARY", "./media/movies")),
     downloads: resolve(process.cwd(), str("DOWNLOADS", "./media/downloads")),
+    channelsStaging: resolve(
+      process.cwd(),
+      str("CHANNELS_STAGING", "./media/channels"),
+    ),
     autoApprove: settingOrEnvBool(settings, "auto_approve", "AUTO_APPROVE", true),
     staleDays: settingOrEnvInt(settings, "stale_days", "STALE_DAYS", 365),
     staleDeleteGraceDays: settingOrEnvInt(
@@ -110,6 +124,18 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
     ),
     monitorIntervalMs: int("MONITOR_INTERVAL_MS", 120_000),
     importIntervalMs: int("IMPORT_INTERVAL_MS", 30_000),
+    broadcastLeadHours: settingOrEnvInt(
+      settings,
+      "broadcast_lead_hours",
+      "BROADCAST_LEAD_HOURS",
+      6,
+    ),
+    broadcastHorizonHours: settingOrEnvInt(
+      settings,
+      "broadcast_horizon_hours",
+      "BROADCAST_HORIZON_HOURS",
+      36,
+    ),
     adminUser: str("ADMIN_USER", "brad"),
     adminPass: str("ADMIN_PASS", "changeme"),
     sessionSecret: str("SESSION_SECRET", "dev-secret-change-me"),
@@ -126,6 +152,12 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
         "nzbget_movie_category",
         "NZBGET_MOVIE_CATEGORY",
         "movie-orch",
+      ),
+      broadcastCategory: settingOrEnv(
+        settings,
+        "nzbget_broadcast_category",
+        "NZBGET_BROADCAST_CATEGORY",
+        "orca-tv",
       ),
       pathPrefix: settingOrEnv(
         settings,
@@ -153,6 +185,14 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
       url: settingOrEnv(settings, "plex_url", "PLEX_URL", "http://127.0.0.1:32400").replace(/\/$/, ""),
       token: settingOrEnv(settings, "plex_token", "PLEX_TOKEN"),
     },
+    ersatztv: {
+      url: settingOrEnv(
+        settings,
+        "ersatztv_url",
+        "ERSATZTV_URL",
+        "http://127.0.0.1:8409",
+      ).replace(/\/$/, ""),
+    },
     pushover: {
       userKey: settingOrEnv(settings, "pushover_user_key", "PUSHOVER_USER_KEY"),
       appToken: settingOrEnv(settings, "pushover_app_token", "PUSHOVER_APP_TOKEN"),
@@ -169,6 +209,11 @@ function buildConfig(settings: Record<string, string> = {}): AppConfig {
       tvLibrary: settingOrEnv(settings, "tv_library_host", "TV_LIBRARY_HOST"),
       movieLibrary: settingOrEnv(settings, "movie_library_host", "MOVIE_LIBRARY_HOST"),
       downloads: settingOrEnv(settings, "downloads_host", "DOWNLOADS_HOST"),
+      channelsStaging: settingOrEnv(
+        settings,
+        "channels_staging_host",
+        "CHANNELS_STAGING_HOST",
+      ),
     },
   };
 }

@@ -959,7 +959,7 @@ export function listMovieRequests(limit = 50): Array<{
   }>;
 }
 
-export type ChannelKind = "movie" | "tv";
+export type ChannelKind = "movie" | "tv" | "mixed";
 export type ChannelSource = "tmdb_trending" | "tmdb_search" | "tvmaze_search";
 
 export interface ChannelRow {
@@ -971,6 +971,10 @@ export interface ChannelRow {
   hopper_size: number;
   drop_after_watch: number;
   enabled: number;
+  channel_number: number;
+  slug: string | null;
+  lead_hours: number;
+  block_minutes: number;
   created_at: string;
   updated_at: string;
 }
@@ -998,14 +1002,66 @@ export interface ChannelItemRow {
   updated_at: string;
 }
 
+export type ScheduleBlockStatus =
+  | "planned"
+  | "downloading"
+  | "ready"
+  | "airing"
+  | "done"
+  | "failed";
+
+export interface ScheduleBlockRow {
+  id: string;
+  station_id: string;
+  start_at: string;
+  end_at: string;
+  title: string;
+  subtitle: string | null;
+  kind: string;
+  tmdb_id: number | null;
+  tvmaze_id: number | null;
+  season: number | null;
+  episode: number | null;
+  status: ScheduleBlockStatus;
+  file_path: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StagingFileRow {
+  id: string;
+  station_id: string;
+  block_id: string | null;
+  path: string;
+  bytes: number;
+  delete_after: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
+}
+
 export function listChannels(): ChannelRow[] {
   return db
-    .prepare(`SELECT * FROM channels ORDER BY name COLLATE NOCASE`)
+    .prepare(`SELECT * FROM channels ORDER BY channel_number ASC, name COLLATE NOCASE`)
     .all() as ChannelRow[];
 }
 
 export function getChannel(id: string): ChannelRow | undefined {
   return db.prepare(`SELECT * FROM channels WHERE id = ?`).get(id) as ChannelRow | undefined;
+}
+
+export function getChannelBySlug(slug: string): ChannelRow | undefined {
+  return db
+    .prepare(`SELECT * FROM channels WHERE slug = ?`)
+    .get(slug) as ChannelRow | undefined;
 }
 
 export function upsertChannel(input: {
@@ -1016,15 +1072,22 @@ export function upsertChannel(input: {
   hopperSize?: number;
   dropAfterWatch?: boolean;
   enabled?: boolean;
+  channelNumber?: number;
+  slug?: string | null;
+  leadHours?: number;
+  blockMinutes?: number;
 }): ChannelRow {
   const existing = db
     .prepare(`SELECT * FROM channels WHERE name = ?`)
     .get(input.name) as ChannelRow | undefined;
   const ts = nowIso();
+  const slug = input.slug ?? slugify(input.name);
   if (existing) {
     db.prepare(
       `UPDATE channels SET kind=@kind, source=@source, query=@query, hopper_size=@hopper_size,
-       drop_after_watch=@drop_after_watch, enabled=@enabled, updated_at=@updated_at WHERE id=@id`,
+       drop_after_watch=@drop_after_watch, enabled=@enabled, channel_number=@channel_number,
+       slug=@slug, lead_hours=@lead_hours, block_minutes=@block_minutes, updated_at=@updated_at
+       WHERE id=@id`,
     ).run({
       id: existing.id,
       kind: input.kind,
@@ -1033,11 +1096,15 @@ export function upsertChannel(input: {
       hopper_size: input.hopperSize ?? existing.hopper_size,
       drop_after_watch: input.dropAfterWatch === false ? 0 : 1,
       enabled: input.enabled === false ? 0 : 1,
+      channel_number: input.channelNumber ?? existing.channel_number ?? 0,
+      slug,
+      lead_hours: input.leadHours ?? existing.lead_hours ?? 6,
+      block_minutes: input.blockMinutes ?? existing.block_minutes ?? 30,
       updated_at: ts,
     });
     return getChannel(existing.id)!;
   }
-  const row: ChannelRow = {
+  const row = {
     id: nanoid(),
     name: input.name,
     kind: input.kind,
@@ -1046,14 +1113,20 @@ export function upsertChannel(input: {
     hopper_size: input.hopperSize ?? 8,
     drop_after_watch: input.dropAfterWatch === false ? 0 : 1,
     enabled: input.enabled === false ? 0 : 1,
+    channel_number: input.channelNumber ?? 0,
+    slug,
+    lead_hours: input.leadHours ?? 6,
+    block_minutes: input.blockMinutes ?? 30,
     created_at: ts,
     updated_at: ts,
   };
   db.prepare(
-    `INSERT INTO channels (id, name, kind, source, query, hopper_size, drop_after_watch, enabled, created_at, updated_at)
-     VALUES (@id, @name, @kind, @source, @query, @hopper_size, @drop_after_watch, @enabled, @created_at, @updated_at)`,
+    `INSERT INTO channels (id, name, kind, source, query, hopper_size, drop_after_watch, enabled,
+      channel_number, slug, lead_hours, block_minutes, created_at, updated_at)
+     VALUES (@id, @name, @kind, @source, @query, @hopper_size, @drop_after_watch, @enabled,
+      @channel_number, @slug, @lead_hours, @block_minutes, @created_at, @updated_at)`,
   ).run(row);
-  return row;
+  return getChannel(row.id)!;
 }
 
 export function listChannelItems(channelId: string): ChannelItemRow[] {
@@ -1135,10 +1208,55 @@ export function ensureDefaultChannels(): void {
     kind: ChannelKind;
     source: ChannelSource;
     query?: string;
+    channelNumber: number;
+    slug: string;
+    blockMinutes: number;
   }> = [
-    { name: "Hot Movies", kind: "movie", source: "tmdb_trending" },
-    { name: "Cops 24/7", kind: "tv", source: "tvmaze_search", query: "Cops" },
-    { name: "Drama Night", kind: "movie", source: "tmdb_search", query: "drama" },
+    {
+      name: "Cops 24/7",
+      kind: "tv",
+      source: "tvmaze_search",
+      query: "Cops",
+      channelNumber: 3,
+      slug: "cops",
+      blockMinutes: 30,
+    },
+    {
+      name: "Comedy",
+      kind: "mixed",
+      source: "tmdb_search",
+      query: "comedy",
+      channelNumber: 5,
+      slug: "comedy",
+      blockMinutes: 30,
+    },
+    {
+      name: "Below Deck",
+      kind: "tv",
+      source: "tvmaze_search",
+      query: "Below Deck",
+      channelNumber: 7,
+      slug: "below-deck",
+      blockMinutes: 45,
+    },
+    {
+      name: "Kitchen Heat",
+      kind: "tv",
+      source: "tvmaze_search",
+      query: "Kitchen Nightmares",
+      channelNumber: 9,
+      slug: "kitchen-heat",
+      blockMinutes: 45,
+    },
+    {
+      name: "Toon Box",
+      kind: "tv",
+      source: "tvmaze_search",
+      query: "Bluey",
+      channelNumber: 11,
+      slug: "toon-box",
+      blockMinutes: 15,
+    },
   ];
   for (const d of defaults) {
     upsertChannel({
@@ -1149,6 +1267,203 @@ export function ensureDefaultChannels(): void {
       hopperSize: 6,
       dropAfterWatch: true,
       enabled: true,
+      channelNumber: d.channelNumber,
+      slug: d.slug,
+      leadHours: 6,
+      blockMinutes: d.blockMinutes,
     });
   }
+  // Disable legacy hopper-only presets if present
+  for (const legacy of ["Hot Movies", "Drama Night"]) {
+    const row = db
+      .prepare(`SELECT * FROM channels WHERE name = ?`)
+      .get(legacy) as ChannelRow | undefined;
+    if (row) {
+      db.prepare(`UPDATE channels SET enabled=0, updated_at=? WHERE id=?`).run(
+        nowIso(),
+        row.id,
+      );
+    }
+  }
+}
+
+export function listScheduleBlocks(opts?: {
+  stationId?: string;
+  from?: string;
+  to?: string;
+  status?: ScheduleBlockStatus;
+}): ScheduleBlockRow[] {
+  let sql = `SELECT * FROM schedule_blocks WHERE 1=1`;
+  const params: unknown[] = [];
+  if (opts?.stationId) {
+    sql += ` AND station_id = ?`;
+    params.push(opts.stationId);
+  }
+  if (opts?.from) {
+    sql += ` AND end_at >= ?`;
+    params.push(opts.from);
+  }
+  if (opts?.to) {
+    sql += ` AND start_at <= ?`;
+    params.push(opts.to);
+  }
+  if (opts?.status) {
+    sql += ` AND status = ?`;
+    params.push(opts.status);
+  }
+  sql += ` ORDER BY start_at ASC`;
+  return db.prepare(sql).all(...params) as ScheduleBlockRow[];
+}
+
+export function getScheduleBlock(id: string): ScheduleBlockRow | undefined {
+  return db
+    .prepare(`SELECT * FROM schedule_blocks WHERE id = ?`)
+    .get(id) as ScheduleBlockRow | undefined;
+}
+
+export function insertScheduleBlock(input: {
+  stationId: string;
+  startAt: string;
+  endAt: string;
+  title: string;
+  subtitle?: string | null;
+  kind?: string;
+  tmdbId?: number | null;
+  tvmazeId?: number | null;
+  season?: number | null;
+  episode?: number | null;
+  status?: ScheduleBlockStatus;
+  filePath?: string | null;
+}): ScheduleBlockRow {
+  const ts = nowIso();
+  const row: ScheduleBlockRow = {
+    id: nanoid(),
+    station_id: input.stationId,
+    start_at: input.startAt,
+    end_at: input.endAt,
+    title: input.title,
+    subtitle: input.subtitle ?? null,
+    kind: input.kind ?? "tv",
+    tmdb_id: input.tmdbId ?? null,
+    tvmaze_id: input.tvmazeId ?? null,
+    season: input.season ?? null,
+    episode: input.episode ?? null,
+    status: input.status ?? "planned",
+    file_path: input.filePath ?? null,
+    error: null,
+    created_at: ts,
+    updated_at: ts,
+  };
+  db.prepare(
+    `INSERT INTO schedule_blocks
+      (id, station_id, start_at, end_at, title, subtitle, kind, tmdb_id, tvmaze_id,
+       season, episode, status, file_path, error, created_at, updated_at)
+     VALUES
+      (@id, @station_id, @start_at, @end_at, @title, @subtitle, @kind, @tmdb_id, @tvmaze_id,
+       @season, @episode, @status, @file_path, @error, @created_at, @updated_at)`,
+  ).run(row);
+  return row;
+}
+
+export function updateScheduleBlock(
+  id: string,
+  patch: Partial<{
+    status: ScheduleBlockStatus;
+    file_path: string | null;
+    error: string | null;
+    title: string;
+    subtitle: string | null;
+  }>,
+): void {
+  const cur = getScheduleBlock(id);
+  if (!cur) return;
+  db.prepare(
+    `UPDATE schedule_blocks SET status=@status, file_path=@file_path, error=@error,
+      title=@title, subtitle=@subtitle, updated_at=@updated_at WHERE id=@id`,
+  ).run({
+    id,
+    status: patch.status ?? cur.status,
+    file_path: patch.file_path !== undefined ? patch.file_path : cur.file_path,
+    error: patch.error !== undefined ? patch.error : cur.error,
+    title: patch.title ?? cur.title,
+    subtitle: patch.subtitle !== undefined ? patch.subtitle : cur.subtitle,
+    updated_at: nowIso(),
+  });
+}
+
+export function deleteOldScheduleBlocks(beforeIso: string): number {
+  const r = db
+    .prepare(`DELETE FROM schedule_blocks WHERE end_at < ? AND status IN ('done','failed')`)
+    .run(beforeIso);
+  return r.changes;
+}
+
+export function upsertStagingFile(input: {
+  stationId: string;
+  blockId?: string | null;
+  path: string;
+  bytes?: number;
+  deleteAfter?: string | null;
+}): StagingFileRow {
+  const existing = db
+    .prepare(`SELECT * FROM staging_files WHERE path = ?`)
+    .get(input.path) as StagingFileRow | undefined;
+  const ts = nowIso();
+  if (existing) {
+    db.prepare(
+      `UPDATE staging_files SET station_id=@station_id, block_id=@block_id, bytes=@bytes,
+       delete_after=@delete_after, updated_at=@updated_at WHERE id=@id`,
+    ).run({
+      id: existing.id,
+      station_id: input.stationId,
+      block_id: input.blockId ?? existing.block_id,
+      bytes: input.bytes ?? existing.bytes,
+      delete_after:
+        input.deleteAfter !== undefined ? input.deleteAfter : existing.delete_after,
+      updated_at: ts,
+    });
+    return db
+      .prepare(`SELECT * FROM staging_files WHERE id = ?`)
+      .get(existing.id) as StagingFileRow;
+  }
+  const row: StagingFileRow = {
+    id: nanoid(),
+    station_id: input.stationId,
+    block_id: input.blockId ?? null,
+    path: input.path,
+    bytes: input.bytes ?? 0,
+    delete_after: input.deleteAfter ?? null,
+    created_at: ts,
+    updated_at: ts,
+  };
+  db.prepare(
+    `INSERT INTO staging_files (id, station_id, block_id, path, bytes, delete_after, created_at, updated_at)
+     VALUES (@id, @station_id, @block_id, @path, @bytes, @delete_after, @created_at, @updated_at)`,
+  ).run(row);
+  return row;
+}
+
+export function listStagingFiles(stationId?: string): StagingFileRow[] {
+  if (stationId) {
+    return db
+      .prepare(`SELECT * FROM staging_files WHERE station_id = ? ORDER BY created_at DESC`)
+      .all(stationId) as StagingFileRow[];
+  }
+  return db
+    .prepare(`SELECT * FROM staging_files ORDER BY created_at DESC`)
+    .all() as StagingFileRow[];
+}
+
+export function deleteStagingFileRow(id: string): void {
+  db.prepare(`DELETE FROM staging_files WHERE id = ?`).run(id);
+}
+
+export function listDueStagingDeletes(nowIsoStr: string): StagingFileRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM staging_files
+       WHERE delete_after IS NOT NULL AND delete_after <= ?
+       ORDER BY delete_after ASC`,
+    )
+    .all(nowIsoStr) as StagingFileRow[];
 }
