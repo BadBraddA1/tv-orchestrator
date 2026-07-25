@@ -31,7 +31,8 @@ services:
     depends_on:
       - ersatztv
 
-  # Fake HDHomeRun tuner for Plex Live TV. Point media at the same staging mount.
+  # Fake HDHomeRun tuner for Plex Live TV.
+  # Mount TV library so channels can play existing shows (Bluey, etc.) without re-download.
   # Plex → Settings → Live TV & DVR → Set Up Plex Tuner → http://<host>:8409
   ersatztv:
     image: jasongdove/ersatztv:latest
@@ -42,6 +43,7 @@ services:
     volumes:
       - ersatztv-config:/root/.local/share/ersatztv
       - ${CHANNELS_STAGING_HOST:-./media/channels}:/media/channels:ro
+      - ${TV_LIBRARY_HOST:-./media/tv}:/media/tv:ro
     environment:
       TZ: ${TZ:-America/Chicago}
 
