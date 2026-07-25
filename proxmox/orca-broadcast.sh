@@ -98,8 +98,15 @@ select_storage() {
   if [[ ${#menu[@]} -eq 0 ]]; then
     die "No storage with content=$content"
   fi
-  # Non-interactive / single choice: first storage
+  # Non-interactive / single choice: prefer local-lvm, else first with most free
   if [[ "${NONINTERACTIVE:-0}" == "1" || ${#menu[@]} -eq 3 ]]; then
+    local i
+    for ((i=0; i<${#menu[@]}; i+=3)); do
+      if [[ "${menu[$i]}" == "local-lvm" ]]; then
+        echo "local-lvm"
+        return
+      fi
+    done
     echo "${menu[0]}"
     return
   fi
