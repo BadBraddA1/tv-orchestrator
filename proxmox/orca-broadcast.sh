@@ -97,7 +97,8 @@ select_storage() {
   if [[ ${#menu[@]} -eq 0 ]]; then
     die "No storage with content=$content"
   fi
-  if [[ ${#menu[@]} -eq 3 ]]; then
+  # Non-interactive / single choice: first storage
+  if [[ "${NONINTERACTIVE:-0}" == "1" || ${#menu[@]} -eq 3 ]]; then
     echo "${menu[0]}"
     return
   fi
@@ -279,29 +280,31 @@ print_done() {
 # --- main --------------------------------------------------------------------
 header
 need_pve
-command -v whiptail >/dev/null 2>&1 || apt-get install -y whiptail >/dev/null
 
-# Non-interactive if CTID already provided via env
-if [[ -n "${CTID}" && -n "${CHANNELS_STAGING_HOST:-}" ]]; then
+# Paste / oneinstall path: secrets + paths already exported → no whiptail
+if [[ "${NONINTERACTIVE:-0}" == "1" || ( -n "${CHANNELS_STAGING_HOST:-}" && -n "${NZBGET_URL:-}" && -n "${ADMIN_PASS:-}" ) ]]; then
+  NONINTERACTIVE=1
   MODE=env
+  CHANNELS_STAGING_HOST="${CHANNELS_STAGING_HOST:-/mnt/plex/rip/channels}"
+  DOWNLOADS_HOST="${DOWNLOADS_HOST:-/mnt/plex/rip/completed}"
+  TV_LIBRARY_HOST="${TV_LIBRARY_HOST:-/mnt/plex/TV Shows}"
+  MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST:-/mnt/plex/Movies}"
+  CTID="${CTID:-$(next_id)}"
+  echo -e "${BL}Non-interactive install${CL} — CTID=${CTID} HN=${HN}"
+  echo -e "  staging=${CHANNELS_STAGING_HOST}"
+  echo -e "  downloads=${DOWNLOADS_HOST}"
 else
+  command -v whiptail >/dev/null 2>&1 || apt-get install -y whiptail >/dev/null
   prompt_defaults
   [[ "$MODE" == "advanced" ]] && advanced_prompts
-  # default mode still needs staging path if not set
   if [[ -z "${CHANNELS_STAGING_HOST:-}" ]]; then
     CHANNELS_STAGING_HOST=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox \
       "Host path for Live-TV staging (required)\nExample: /mnt/plex/rip/channels" 10 70 \
       "/mnt/plex/rip/channels" 3>&1 1>&2 2>&3) || exit 1
   fi
-  if [[ -z "${DOWNLOADS_HOST:-}" ]]; then
-    DOWNLOADS_HOST="/mnt/plex/rip/completed"
-  fi
-  if [[ -z "${TV_LIBRARY_HOST:-}" ]]; then
-    TV_LIBRARY_HOST="/mnt/plex/TV Shows"
-  fi
-  if [[ -z "${MOVIE_LIBRARY_HOST:-}" ]]; then
-    MOVIE_LIBRARY_HOST="/mnt/plex/Movies"
-  fi
+  DOWNLOADS_HOST="${DOWNLOADS_HOST:-/mnt/plex/rip/completed}"
+  TV_LIBRARY_HOST="${TV_LIBRARY_HOST:-/mnt/plex/TV Shows}"
+  MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST:-/mnt/plex/Movies}"
 fi
 
 ensure_template

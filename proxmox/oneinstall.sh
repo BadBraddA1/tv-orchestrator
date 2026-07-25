@@ -102,6 +102,8 @@ for k in keys:
     lines.append(f"export {k}='{v}'")
 lines += [
     "",
+    "export NONINTERACTIVE='1'",
+    "",
     'bash -c "$(curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/proxmox/orca-broadcast.sh)"',
     "",
 ]
