@@ -82,7 +82,7 @@ import {
 } from "./services/tmdb.js";
 import { monitorMoviesOnce, pollMovieDownloadsOnce } from "./workers/movies.js";
 import { maintainChannelsOnce, getBroadcastGuide, listStagingTree } from "./workers/channels.js";
-import { probeErsatzTv, plexTunerSetupHints } from "./services/ersatztv.js";
+import { probeErsatzTv, plexTunerSetupHints, buildBroadcastXmltv } from "./services/ersatztv.js";
 import {
   tautulliConfigured,
   getActivity,
@@ -265,6 +265,18 @@ async function handleApi(
       },
       mounts,
     });
+    return true;
+  }
+
+  // Public XMLTV for Plex (no auth — Plex cannot log in)
+  if ((path === "/xmltv.xml" || path === "/api/broadcast/xmltv") && method === "GET") {
+    const hours = Number.parseInt(url.searchParams.get("hours") || "48", 10);
+    const body = buildBroadcastXmltv(Number.isFinite(hours) ? hours : 48);
+    res.writeHead(200, {
+      "Content-Type": "application/xml; charset=utf-8",
+      "Cache-Control": "no-cache",
+    });
+    res.end(body);
     return true;
   }
 

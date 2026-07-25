@@ -23,6 +23,20 @@ CHANNELS_STAGING_HOST=/mnt/plex/rip/channels
 
 Mac share equivalent: `/Volumes/Plexv2/rip/channels`
 
+## XMLTV (Plex guide)
+
+Plex’s built-in **My Guide** will show **0 channels matched** for ErsatzTV.
+
+Use Orca’s public XMLTV instead:
+
+```
+http://10.0.0.167:3080/xmltv.xml
+```
+
+In Plex tuner setup: **Have an XMLTV guide on your server?** → paste that URL → map channel **1 / ErsatzTV** (then add more ErsatzTV channels for 3/5/7/9/11).
+
+ErsatzTV’s own `http://<host>:8409/iptv/xmltv.xml` stays empty until each channel has a playout/schedule in the ErsatzTV UI.
+
 ## First-time wire-up (prove one channel)
 
 1. `docker compose up -d ersatztv tv-orchestrator`
