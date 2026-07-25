@@ -21,6 +21,7 @@ import {
   type ScheduleBlockRow,
 } from "../db/repo.js";
 import { config } from "../config.js";
+import { getSetting } from "../db/settings.js";
 import { searchShows } from "../services/tvmaze.js";
 import { searchMovies, getTrendingMovies, yearFromRelease, tmdbConfigured } from "../services/tmdb.js";
 import { searchEpisode, searchMovie, pickBestRelease } from "../services/newznab.js";
@@ -349,6 +350,10 @@ async function advanceAiringAndCleanup(): Promise<{ airing: number; done: number
 
 /** Grab blocks that start within lead window and are still planned. */
 async function fillUpcoming(): Promise<number> {
+  // Library mode: ErsatzTV plays from /media/tv — do not NZBGet/stage/delete
+  if (getSetting("broadcast_library_mode") === "1") {
+    return 0;
+  }
   const now = new Date();
   const leadEnd = addMinutes(now, config.broadcastLeadHours * 60);
   let grabbed = 0;
@@ -360,6 +365,7 @@ async function fillUpcoming(): Promise<number> {
   for (const block of blocks) {
     const station = getChannel(block.station_id);
     if (!station?.enabled) continue;
+    if ((station.hopper_size || 0) <= 0) continue;
     // Respect per-station lead_hours
     const leadMs = (station.lead_hours || config.broadcastLeadHours) * 3600_000;
     if (new Date(block.start_at).getTime() - now.getTime() > leadMs) continue;
@@ -381,10 +387,13 @@ export async function maintainChannelsOnce(): Promise<{
   ensureDefaultChannels();
   await ensureStationDirs();
 
-  const scheduled = await generateSchedule();
+  const libraryMode = getSetting("broadcast_library_mode") === "1";
+  const scheduled = libraryMode ? 0 : await generateSchedule();
   const grabbed = await fillUpcoming();
-  const moved = await sweepBroadcastDownloads();
-  const { airing, done, deleted } = await advanceAiringAndCleanup();
+  const moved = libraryMode ? 0 : await sweepBroadcastDownloads();
+  const { airing, done, deleted } = libraryMode
+    ? { airing: 0, done: 0, deleted: 0 }
+    : await advanceAiringAndCleanup();
 
   // Hopper "filled/dropped" kept for API compat
   const filled = grabbed + moved;

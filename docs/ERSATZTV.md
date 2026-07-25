@@ -64,6 +64,23 @@ Bootstrap (creates placeholder media + ErsatzTV channels/schedules/playouts):
 python3 /opt/tv-orchestrator/scripts/bootstrap-ersatztv-channels.py
 ```
 
+## Library mode (no re-download)
+
+Point ErsatzTV at existing Plex TV folders under `/media/tv` and disable Orca grabs:
+
+```bash
+python3 /opt/tv-orchestrator/scripts/rewire-channels-to-library.py
+```
+
+Sets `broadcast_library_mode=1` in Orca so Broadcast no longer NZBGets/stages/deletes.
+
+Wired by default:
+- **Toon Box** → `Bluey (2018)`
+- **Kitchen Heat** → `KN/` (Kitchen Nightmares)
+- **Cops 24/7** → Motorway Cops + Rookie Cops
+- **Comedy** → Come Fly with Me (thin — add more folders later)
+- **Below Deck** → not in library yet
+
 ## NZBGet
 
 Broadcast grabs use category **`orca-tv`** (completed → `…/completed/orca-tv`), then Orca moves into the station staging folder. Never into `TV Shows` / `Movies`.
