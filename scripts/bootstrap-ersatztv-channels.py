@@ -46,8 +46,23 @@ def sh(cmd: list[str]) -> None:
     subprocess.check_call(cmd)
 
 
+def ffmpeg_bin() -> str:
+    for p in (
+        os.environ.get("FFMPEG"),
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+        "ffmpeg",
+    ):
+        if not p:
+            continue
+        if p == "ffmpeg" or Path(p).exists():
+            return p
+    raise SystemExit("ffmpeg not found")
+
+
 def ensure_stubs() -> None:
     STAGING.mkdir(parents=True, exist_ok=True)
+    ff = ffmpeg_bin()
     for _num, name, slug in STATIONS:
         d = STAGING / slug
         d.mkdir(parents=True, exist_ok=True)
@@ -56,15 +71,15 @@ def ensure_stubs() -> None:
             print(f"stub ok {out}")
             continue
         # 60s silent H.264 — keeps the channel alive until Orca drops real eps
-        label = name.replace(":", "-")
+        label = name.replace(":", "-").replace("'", "")
         sh(
             [
-                "ffmpeg",
+                ff,
                 "-y",
                 "-f",
                 "lavfi",
                 "-i",
-                f"color=c=black:s=1280x720:d=60",
+                "color=c=black:s=1280x720:d=60",
                 "-f",
                 "lavfi",
                 "-i",
