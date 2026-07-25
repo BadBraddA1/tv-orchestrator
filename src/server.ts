@@ -1224,6 +1224,19 @@ export async function startServer(): Promise<void> {
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+
+      // Pretty public XMLTV URL for Plex (same payload as /api/broadcast/xmltv)
+      if (url.pathname === "/xmltv.xml" && (req.method || "GET") === "GET") {
+        const hours = Number.parseInt(url.searchParams.get("hours") || "48", 10);
+        const body = buildBroadcastXmltv(Number.isFinite(hours) ? hours : 48);
+        res.writeHead(200, {
+          "Content-Type": "application/xml; charset=utf-8",
+          "Cache-Control": "no-cache",
+        });
+        res.end(body);
+        return;
+      }
+
       if (url.pathname.startsWith("/api/")) {
         const handled = await handleApi(req, res, url);
         if (handled) return;
