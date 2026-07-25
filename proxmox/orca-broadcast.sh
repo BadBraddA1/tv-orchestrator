@@ -37,7 +37,8 @@ OSTEMPLATE="${OSTEMPLATE:-}"
 STORAGE="${STORAGE:-}"
 TEMPLATE_STORAGE="${TEMPLATE_STORAGE:-}"
 UNPRIVILEGED="${UNPRIVILEGED:-1}"
-FEATURES="${FEATURES:-nesting=1;keyctl=1}"
+# pct --features wants commas (config file uses semicolons)
+FEATURES="${FEATURES:-nesting=1,keyctl=1}"
 
 YW=$(echo "\033[33m")
 BL=$(echo "\033[36m")
