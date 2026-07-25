@@ -24,15 +24,29 @@ See **[docs/CHANNELS.md](docs/CHANNELS.md)** and **[docs/ERSATZTV.md](docs/ERSAT
 
 ### Proxmox VE helper (recommended — creates an LXC)
 
-On the **Proxmox host** shell (same style as community helper scripts):
+**oneinstall** (prep on Mac → paste on Proxmox when the node is ready):
+
+```bash
+# On Mac: refresh clipboard paste-script from ~/.config/orca-broadcast/install.env
+~/bin/oneinstall
+# Then Proxmox Shell → paste → Enter
+```
+
+Repo entry point (on Proxmox as root, with `/root/orca-broadcast.env` present):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/proxmox/oneinstall.sh | bash
+```
+
+Or the interactive helper alone:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/proxmox/orca-broadcast.sh)"
 ```
 
-It will create a Debian LXC, install Docker, bind-mount your media paths, and start **Orca + ErsatzTV**.
+It creates a Debian LXC, installs Docker, bind-mounts media paths, and starts **Orca + ErsatzTV**.
 
-Optional env before running:
+Optional env before running the helper:
 
 ```bash
 export CHANNELS_STAGING_HOST=/mnt/plex/rip/channels

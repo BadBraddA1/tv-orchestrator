@@ -2,6 +2,12 @@
 
 Orca Broadcast (**tv-orchestrator**) rolls onto Proxmox with a helper-style LXC script, or onto any Docker host with `install.sh`.
 
+## oneinstall (recommended when Proxmox isn’t ready yet)
+
+On the Mac, secrets stay in `~/.config/orca-broadcast/install.env` (never commit). Running `~/bin/oneinstall` refreshes `~/.config/orca-broadcast/run-on-proxmox.sh` and copies it to the clipboard. When the Proxmox node is up: host Shell → paste → Enter.
+
+Repo script: [`proxmox/oneinstall.sh`](../proxmox/oneinstall.sh) — on a Proxmox host it loads `/root/orca-broadcast.env` and runs the LXC helper; elsewhere it only prepares the paste script.
+
 ## Proxmox VE helper (creates the container)
 
 Run on the **Proxmox host** shell:
