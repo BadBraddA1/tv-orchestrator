@@ -51,13 +51,23 @@ def ffmpeg_bin() -> str:
         os.environ.get("FFMPEG"),
         "/usr/local/bin/ffmpeg",
         "/usr/bin/ffmpeg",
-        "ffmpeg",
     ):
-        if not p:
-            continue
-        if p == "ffmpeg" or Path(p).exists():
+        if p and Path(p).exists():
             return p
-    raise SystemExit("ffmpeg not found")
+    # Prefer ErsatzTV container ffmpeg (always present in our compose)
+    try:
+        subprocess.check_call(
+            ["docker", "exec", "orca-ersatztv", "ffmpeg", "-version"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return "docker-ersatztv"
+    except Exception:
+        pass
+    which = subprocess.run(["which", "ffmpeg"], capture_output=True, text=True)
+    if which.returncode == 0 and which.stdout.strip():
+        return which.stdout.strip()
+    raise SystemExit("ffmpeg not found (host or orca-ersatztv container)")
 
 
 def ensure_stubs() -> None:
@@ -70,10 +80,40 @@ def ensure_stubs() -> None:
         if out.exists() and out.stat().st_size > 10_000:
             print(f"stub ok {out}")
             continue
-        # 60s silent H.264 — keeps the channel alive until Orca drops real eps
         label = name.replace(":", "-").replace("'", "")
-        sh(
-            [
+        # Container sees staging at /media/channels
+        container_out = f"/media/channels/{slug}/{slug}-placeholder.mp4"
+        vf = f"drawtext=text='{label}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2"
+        if ff == "docker-ersatztv":
+            cmd = [
+                "docker",
+                "exec",
+                "orca-ersatztv",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=1280x720:d=60",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=44100:cl=stereo",
+                "-vf",
+                vf,
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-shortest",
+                "-t",
+                "60",
+                container_out,
+            ]
+        else:
+            cmd = [
                 ff,
                 "-y",
                 "-f",
@@ -85,7 +125,7 @@ def ensure_stubs() -> None:
                 "-i",
                 "anullsrc=r=44100:cl=stereo",
                 "-vf",
-                f"drawtext=text='{label}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2",
+                vf,
                 "-c:v",
                 "libx264",
                 "-pix_fmt",
@@ -97,7 +137,7 @@ def ensure_stubs() -> None:
                 "60",
                 str(out),
             ]
-        )
+        sh(cmd)
 
 
 def db_connect() -> sqlite3.Connection:
