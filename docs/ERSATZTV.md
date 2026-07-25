@@ -57,6 +57,13 @@ ErsatzTV’s own `http://<host>:8409/iptv/xmltv.xml` stays empty until each chan
 | 9 | Kitchen Heat | `kitchen-heat` |
 | 11 | Toon Box | `toon-box` |
 
+Bootstrap (creates placeholder media + ErsatzTV channels/schedules/playouts):
+
+```bash
+# inside the orca CT
+python3 /opt/tv-orchestrator/scripts/bootstrap-ersatztv-channels.py
+```
+
 ## NZBGet
 
 Broadcast grabs use category **`orca-tv`** (completed → `…/completed/orca-tv`), then Orca moves into the station staging folder. Never into `TV Shows` / `Movies`.

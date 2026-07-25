@@ -389,7 +389,7 @@ def ensure_playout(con: sqlite3.Connection, channel_id: int, schedule_id: int) -
     if row:
         con.execute(
             """
-            UPDATE Playout SET ProgramScheduleId=?, ScheduleKind=0, ScheduleFile=NULL
+            UPDATE Playout SET ProgramScheduleId=?, ScheduleKind=1, ScheduleFile=NULL
             WHERE Id=?
             """,
             (schedule_id, int(row["Id"])),
@@ -403,7 +403,7 @@ def ensure_playout(con: sqlite3.Connection, channel_id: int, schedule_id: int) -
         INSERT INTO Playout (
           ChannelId, DailyRebuildTime, DecoId, OnDemandCheckpoint, ProgramScheduleId,
           ScheduleFile, ScheduleKind, Seed
-        ) VALUES (?, NULL, NULL, NULL, ?, NULL, 0, ?)
+        ) VALUES (?, NULL, NULL, NULL, ?, NULL, 1, ?)
         """,
         (channel_id, schedule_id, seed),
     )
