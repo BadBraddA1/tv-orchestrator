@@ -1,14 +1,48 @@
 # Fleet / mass deployment
 
-Orca (**tv-orchestrator**) is designed so you can roll it onto many Proxmox / Docker hosts with the same scripts and a per-site env file.
+Orca Broadcast (**tv-orchestrator**) rolls onto Proxmox with a helper-style LXC script, or onto any Docker host with `install.sh`.
 
-## One-liner (single box)
+## Proxmox VE helper (creates the container)
+
+Run on the **Proxmox host** shell:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/proxmox/orca-broadcast.sh)"
+```
+
+What it does:
+
+1. Creates a Debian LXC (nesting + keyctl for Docker)
+2. Bind-mounts host paths for channels / downloads / TV / Movies
+3. Installs Docker inside the CT
+4. Runs `install.sh` → compose up **Orca (:3080)** + **ErsatzTV (:8409)**
+
+Script source: [`proxmox/orca-broadcast.sh`](../proxmox/orca-broadcast.sh)
+
+### One-liner with paths + NZBGet
+
+```bash
+export CHANNELS_STAGING_HOST=/mnt/plex/rip/channels
+export DOWNLOADS_HOST=/mnt/plex/rip/completed
+export TV_LIBRARY_HOST="/mnt/plex/TV Shows"
+export MOVIE_LIBRARY_HOST=/mnt/plex/Movies
+export NZBGET_URL=http://10.0.0.210:6789
+export NZBGET_USER=nzbget
+export NZBGET_PASS='...'
+export NZBGEEK_API_KEY='...'
+export NZBFINDER_API_KEY='...'
+export TMDB_API_KEY='...'
+export ADMIN_PASS='pick-a-password'
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/proxmox/orca-broadcast.sh)"
+```
+
+## One-liner (existing Docker CT/VM)
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh" | bash
 ```
 
-Then open `http://<host>:3080` → setup walkthrough (admin login, NZBGet, indexers, Plex, TMDB, optional Tautulli/alerts).
+Then open `http://<host>:3080` → Broadcast tab; `http://<host>:8409` → ErsatzTV → add as Plex Live TV tuner.
 
 ## Fleet pattern
 
@@ -16,22 +50,23 @@ Then open `http://<host>:3080` → setup walkthrough (admin login, NZBGet, index
 
 ```bash
 export REPO_URL=https://github.com/BadBraddA1/tv-orchestrator.git
-export REPO_REF=v1.1.0   # or whatever tag you ship
-curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/${REPO_REF}/install.sh" | bash
+export REPO_REF=v1.2.0   # or whatever tag you ship
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/${REPO_REF}/proxmox/orca-broadcast.sh)"
 ```
 
-`install.sh` honors:
+`install.sh` / helper honor:
 
 | Env | Default | Purpose |
 |-----|---------|---------|
-| `INSTALL_DIR` | `$HOME/tv-orchestrator` | Clone / compose root |
+| `INSTALL_DIR` | `/opt/tv-orchestrator` (helper) or `$HOME/tv-orchestrator` | Clone / compose root |
 | `REPO_URL` | this GitHub repo | Source |
 | `REPO_REF` | `main` | Branch or tag to check out |
 | `PORT` | `3080` | Host port |
-| `TV_LIBRARY_HOST` | `./media/tv` | Plex **TV Shows** folder (`…/TV Shows`) |
-| `MOVIE_LIBRARY_HOST` | `./media/movies` | Plex **Movies** folder |
-| `DOWNLOADS_HOST` | `./media/downloads` | NZBGet completed parent (`…/rip/completed` with `tv-orch` + `movie-orch` inside) |
-| `NZBGET_PATH_PREFIX` | _(empty)_ | NZBGet DestDir prefix remapped to `/media/downloads` (e.g. `/downloads`) |
+| `TV_LIBRARY_HOST` | `./media/tv` | Plex **TV Shows** (Seerr) |
+| `MOVIE_LIBRARY_HOST` | `./media/movies` | Plex **Movies** (Seerr) |
+| `DOWNLOADS_HOST` | `./media/downloads` | NZBGet completed parent |
+| `CHANNELS_STAGING_HOST` | `./media/channels` | Live-TV staging (**not** a Plex library) |
+| `NZBGET_PATH_PREFIX` | _(empty)_ | NZBGet DestDir prefix remapped to `/media/downloads` |
 | `NZBGET_*` / `NZBGEEK_*` / `PLEX_*` / `TMDB_*` / `ADMIN_*` | see `.env.example` | Optional seed into `.env` |
 
 2. Per site, keep secrets **only** on the host (never in git):
@@ -42,22 +77,19 @@ curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/${REPO_
 3. Update every box the same way:
 
 ```bash
-cd "$INSTALL_DIR" && ./update.sh
-# or pin:
-REPO_REF=v1.1.0 curl -fsSL .../update.sh | bash
+pct enter <CTID>
+cd /opt/tv-orchestrator && ./update.sh
 ```
-
-In-app: **Admin → /update** after the first host `./update.sh` (writes `COMPOSE_HOST_DIR`).
 
 ## Checklist per site
 
-- [ ] Docker + compose plugin
-- [ ] CIFS/NFS mounts for TV / Movies / downloads (uid/gid that containers can write)
-- [ ] NZBGet categories `tv-orch` + `movie-orch` (or match your env)
-- [ ] Plex libraries pointed at the same TV/Movies paths
-- [ ] Firewall: LAN-only `:3080` (do not expose to WAN without auth/proxy)
-- [ ] Create admin in first-run setup; add household users under Admin
-- [ ] TMDB key for movies; Tautulli for usage/channels (optional)
+- [ ] Proxmox host can see media mounts (`/mnt/plex/...`)
+- [ ] Helper created CT; Orca `:3080` and ErsatzTV `:8409` respond
+- [ ] NZBGet category `orca-tv` exists (or allow AppendCategoryDir to create it)
+- [ ] Plex: Live TV & DVR → tuner `http://<ct-ip>:8409`
+- [ ] Do **not** add `rip/channels` as a normal Plex library
+- [ ] TMDB + indexer keys in `.env` / Admin Connections
+- [ ] Firewall: LAN-only `:3080` / `:8409`
 
 ## Security notes for mass deploys
 
@@ -70,7 +102,7 @@ In-app: **Admin → /update** after the first host `./update.sh` (writes `COMPOS
 
 ```bash
 curl -sS "http://127.0.0.1:3080/api/health"
-# expect JSON with ok: true and nzbget/plex flags
+curl -sS -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:8409/"
 ```
 
-UI: sign in → Admin → Connections → **Test** each stack API → **Save this**.
+UI: sign in → **Broadcast** → Refresh schedule / fill → Admin → Connections → **Test** stack APIs.

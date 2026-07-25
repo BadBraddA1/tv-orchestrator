@@ -22,6 +22,28 @@ See **[docs/CHANNELS.md](docs/CHANNELS.md)** and **[docs/ERSATZTV.md](docs/ERSAT
 
 ## Install
 
+### Proxmox VE helper (recommended — creates an LXC)
+
+On the **Proxmox host** shell (same style as community helper scripts):
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/proxmox/orca-broadcast.sh)"
+```
+
+It will create a Debian LXC, install Docker, bind-mount your media paths, and start **Orca + ErsatzTV**.
+
+Optional env before running:
+
+```bash
+export CHANNELS_STAGING_HOST=/mnt/plex/rip/channels
+export DOWNLOADS_HOST=/mnt/plex/rip/completed
+export NZBGET_URL=http://10.0.0.210:6789
+export ADMIN_PASS='pick-a-password'
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/proxmox/orca-broadcast.sh)"
+```
+
+### Existing Docker host / CT
+
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/BadBraddA1/tv-orchestrator/main/install.sh" | bash
 ```

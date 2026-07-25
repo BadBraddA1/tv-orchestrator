@@ -11,6 +11,7 @@
 #   TV_LIBRARY_HOST="/mnt/plex/TV Shows"
 #   MOVIE_LIBRARY_HOST=/mnt/plex/Movies
 #   DOWNLOADS_HOST=/mnt/plex/rip/completed
+#   CHANNELS_STAGING_HOST=/mnt/plex/rip/channels
 #   NZBGET_URL=http://127.0.0.1:6789
 #   NZBGEEK_API_KEY=...
 #   NZBFINDER_API_KEY=...
@@ -175,35 +176,49 @@ fi
 TV_LIBRARY_HOST="${TV_LIBRARY_HOST:-$INSTALL_DIR/media/tv}"
 MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST:-$INSTALL_DIR/media/movies}"
 DOWNLOADS_HOST="${DOWNLOADS_HOST:-$INSTALL_DIR/media/downloads}"
-mkdir -p "$TV_LIBRARY_HOST" "$MOVIE_LIBRARY_HOST" "$DOWNLOADS_HOST" "$INSTALL_DIR/data"
+CHANNELS_STAGING_HOST="${CHANNELS_STAGING_HOST:-$INSTALL_DIR/media/channels}"
+mkdir -p "$TV_LIBRARY_HOST" "$MOVIE_LIBRARY_HOST" "$DOWNLOADS_HOST" "$CHANNELS_STAGING_HOST" "$INSTALL_DIR/data"
+# station slug folders for ErsatzTV
+for slug in cops comedy below-deck kitchen-heat toon-box; do
+  mkdir -p "$CHANNELS_STAGING_HOST/$slug"
+done
 
 cat > .compose.env <<EOF
 TV_LIBRARY_HOST="${TV_LIBRARY_HOST}"
 MOVIE_LIBRARY_HOST="${MOVIE_LIBRARY_HOST}"
 DOWNLOADS_HOST="${DOWNLOADS_HOST}"
+CHANNELS_STAGING_HOST="${CHANNELS_STAGING_HOST}"
 COMPOSE_HOST_DIR=${INSTALL_DIR}
 EOF
 printf '%s\n' "$INSTALL_DIR" > .hostdir
 
+# Optional seed for NZBGet broadcast category
+set_env NZBGET_BROADCAST_CATEGORY "${NZBGET_BROADCAST_CATEGORY:-orca-tv}"
+set_env CHANNELS_STAGING /media/channels
+set_env ERSATZTV_URL http://ersatztv:8409
+
 echo "==> Building and starting container…"
-export TV_LIBRARY_HOST MOVIE_LIBRARY_HOST DOWNLOADS_HOST
+export TV_LIBRARY_HOST MOVIE_LIBRARY_HOST DOWNLOADS_HOST CHANNELS_STAGING_HOST
 "${COMPOSE[@]}" --env-file .compose.env up -d --build
 
 LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
 [[ -z "$LAN_IP" ]] && LAN_IP="YOUR-HOST-IP"
 
 echo ""
-echo "==> Orca install complete."
+echo "==> Orca Broadcast install complete."
 echo ""
-echo "  UI:        http://${LAN_IP}:${PORT_DEFAULT}"
-echo "  Dir:       ${INSTALL_DIR}"
-echo "  Ref:       ${REPO_REF}"
-echo "  Library:   ${TV_LIBRARY_HOST}  →  /media/tv"
-echo "  Movies:    ${MOVIE_LIBRARY_HOST}  →  /media/movies"
-echo "  Downloads: ${DOWNLOADS_HOST}  →  /media/downloads"
+echo "  UI:         http://${LAN_IP}:${PORT_DEFAULT}"
+echo "  ErsatzTV:   http://${LAN_IP}:8409"
+echo "  Dir:        ${INSTALL_DIR}"
+echo "  Ref:        ${REPO_REF}"
+echo "  Library:    ${TV_LIBRARY_HOST}  →  /media/tv"
+echo "  Movies:     ${MOVIE_LIBRARY_HOST}  →  /media/movies"
+echo "  Downloads:  ${DOWNLOADS_HOST}  →  /media/downloads"
+echo "  Channels:   ${CHANNELS_STAGING_HOST}  →  /media/channels  (Live-TV staging — not a Plex library)"
 echo ""
-echo "  Login:     create admin in first-run setup (or ADMIN_USER / ADMIN_PASS in .env)"
-echo "  Logs:      cd ${INSTALL_DIR} && ${COMPOSE[*]} --env-file .compose.env logs -f"
+echo "  Plex: Settings → Live TV & DVR → tuner http://${LAN_IP}:8409"
+echo "  Login: create admin in first-run setup (or ADMIN_USER / ADMIN_PASS in .env)"
+echo "  Logs:  cd ${INSTALL_DIR} && ${COMPOSE[*]} --env-file .compose.env logs -f"
 echo ""
-echo "Fleet notes: docs/DEPLOY.md — pin REPO_REF=vX.Y.Z for mass rollouts"
+echo "Fleet notes: docs/DEPLOY.md — Proxmox LXC helper: proxmox/orca-broadcast.sh"
 echo ""
