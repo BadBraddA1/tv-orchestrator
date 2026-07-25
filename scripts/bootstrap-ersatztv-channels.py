@@ -83,7 +83,7 @@ def ensure_stubs() -> None:
         label = name.replace(":", "-").replace("'", "")
         # Container sees staging at /media/channels
         container_out = f"/media/channels/{slug}/{slug}-placeholder.mp4"
-        vf = f"drawtext=text='{label}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2"
+        # No drawtext — some ETV ffmpeg builds omit that filter
         if ff == "docker-ersatztv":
             cmd = [
                 "docker",
@@ -94,13 +94,11 @@ def ensure_stubs() -> None:
                 "-f",
                 "lavfi",
                 "-i",
-                "color=c=black:s=1280x720:d=60",
+                f"color=c=0x1a1a2e:s=1280x720:d=60",
                 "-f",
                 "lavfi",
                 "-i",
                 "anullsrc=r=44100:cl=stereo",
-                "-vf",
-                vf,
                 "-c:v",
                 "libx264",
                 "-pix_fmt",
@@ -110,6 +108,8 @@ def ensure_stubs() -> None:
                 "-shortest",
                 "-t",
                 "60",
+                "-metadata",
+                f"title={label}",
                 container_out,
             ]
         else:
@@ -119,13 +119,11 @@ def ensure_stubs() -> None:
                 "-f",
                 "lavfi",
                 "-i",
-                "color=c=black:s=1280x720:d=60",
+                "color=c=0x1a1a2e:s=1280x720:d=60",
                 "-f",
                 "lavfi",
                 "-i",
                 "anullsrc=r=44100:cl=stereo",
-                "-vf",
-                vf,
                 "-c:v",
                 "libx264",
                 "-pix_fmt",
@@ -135,6 +133,8 @@ def ensure_stubs() -> None:
                 "-shortest",
                 "-t",
                 "60",
+                "-metadata",
+                f"title={label}",
                 str(out),
             ]
         sh(cmd)
