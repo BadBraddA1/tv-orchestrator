@@ -14,6 +14,9 @@ export function ersatztvConfigured(): boolean {
  * In library mode Orca does not fill schedule_blocks (no NZBGet hopper).
  * Prefer ErsatzTV's own XMLTV so Plex shows real episode titles instead of
  * "Waiting for Orca schedule fill".
+ *
+ * ErsatzTV emits ids like C3.147.ersatztv.org; Plex DVR is mapped to C3.ersatztv.org.
+ * Normalize so Live TV / Guide stay populated.
  */
 export async function fetchErsatzTvXmltv(): Promise<string | null> {
   const base = config.ersatztv.url?.replace(/\/$/, "");
@@ -26,10 +29,17 @@ export async function fetchErsatzTvXmltv(): Promise<string | null> {
     if (!res.ok) return null;
     const body = await res.text();
     if (!body.includes("<programme") || body.length < 500) return null;
-    return body;
+    return normalizeErsatzTvChannelIds(body);
   } catch {
     return null;
   }
+}
+
+/** C3.147.ersatztv.org → C3.ersatztv.org (Plex channelKey format). */
+export function normalizeErsatzTvChannelIds(xml: string): string {
+  return xml
+    .replace(/\bchannel id="C(\d+)\.\d+\.ersatztv\.org"/g, 'channel id="C$1.ersatztv.org"')
+    .replace(/\bchannel="C(\d+)\.\d+\.ersatztv\.org"/g, 'channel="C$1.ersatztv.org"');
 }
 
 function xmltvTime(d: Date): string {
