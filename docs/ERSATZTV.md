@@ -77,7 +77,7 @@ Sets `broadcast_library_mode=1` in Orca so Broadcast no longer NZBGets/stages/de
 Wired by default:
 - **Toon Box** → `Bluey (2018)`
 - **Kitchen Heat** → `KN/` (Kitchen Nightmares)
-- **Cops 24/7** → Motorway Cops + Rookie Cops
+- **Cops 24/7** → `_Broadcast-Cops` (US/A&E: Cops, Live PD, On Patrol Live, The First 48 — not the Korean Rookie Cops drama)
 - **Comedy** → `_Broadcast-Comedy` (Come Fly with Me + sitcoms: The Office, Parks & Rec, Brooklyn Nine-Nine, Community, Always Sunny, Schitt’s Creek, Abbott Elementary, New Girl, Modern Family, Seinfeld)
 - **Below Deck** → `_Broadcast-Below-Deck` (main + Mediterranean / Sailing Yacht / Adventure / Down Under)
 
