@@ -78,9 +78,17 @@ Wired by default:
 - **Toon Box** → `Bluey (2018)`
 - **Kitchen Heat** → `KN/` (Kitchen Nightmares)
 - **Cops 24/7** → Motorway Cops + Rookie Cops
-- **Comedy** → Come Fly with Me (thin — add more folders later)
-- **Below Deck** → not in library yet
+- **Comedy** → `_Broadcast-Comedy` (Come Fly with Me + sitcoms: The Office, Parks & Rec, Brooklyn Nine-Nine, Community, Always Sunny, Schitt’s Creek, Abbott Elementary, New Girl, Modern Family, Seinfeld)
+- **Below Deck** → `_Broadcast-Below-Deck` (main + Mediterranean / Sailing Yacht / Adventure / Down Under)
 
-## NZBGet
+## Guide / “Waiting for Orca schedule fill”
+
+In **library mode** Orca does not NZBGet/stage per schedule slot. Plex’s guide URL `http://<orca>:3080/xmltv.xml` now **proxies ErsatzTV’s real playout guide** (`:8409/iptv/xmltv.xml`) so you see episode titles instead of the old filler text.
+
+You can also point Plex DVR guide directly at:
+
+```
+http://<orca>:8409/iptv/xmltv.xml
+```
 
 Broadcast grabs use category **`orca-tv`** (completed → `…/completed/orca-tv`), then Orca moves into the station staging folder. Never into `TV Shows` / `Movies`.

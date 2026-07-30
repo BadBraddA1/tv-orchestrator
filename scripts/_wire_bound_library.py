@@ -12,6 +12,7 @@ STATIONS = [
     (9, "Kitchen Heat", ["/media/channels/library/kitchen-heat"]),
     (3, "Cops 24/7", ["/media/channels/library/cops-motorway", "/media/channels/library/cops-rookie"]),
     (5, "Comedy", ["/media/channels/library/comedy"]),
+    (7, "Below Deck", ["/media/channels/library/below-deck"]),
 ]
 
 def post(path):

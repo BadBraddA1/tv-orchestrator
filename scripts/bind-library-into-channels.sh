@@ -24,7 +24,9 @@ bind "/mnt/tv/Bluey (2018)" "$BASE/toon-box"
 bind "/mnt/tv/KN" "$BASE/kitchen-heat"
 bind "/mnt/tv/motorway cops catching britains speeders" "$BASE/cops-motorway"
 bind "/mnt/tv/Rookie Cops 2022" "$BASE/cops-rookie"
-bind "/mnt/tv/Come Fly with Me (2010)" "$BASE/comedy"
+# Aggregator folder (multi-show) — same pattern as Below Deck
+bind "/mnt/tv/_Broadcast-Comedy" "$BASE/comedy"
+bind "/mnt/tv/_Broadcast-Below-Deck" "$BASE/below-deck"
 
 # Persist across reboot via fstab inside CT (optional)
 FSTAB=/etc/fstab
@@ -38,7 +40,8 @@ ensure_fstab "/mnt/tv/Bluey (2018)" "$BASE/toon-box"
 ensure_fstab "/mnt/tv/KN" "$BASE/kitchen-heat"
 ensure_fstab "/mnt/tv/motorway cops catching britains speeders" "$BASE/cops-motorway"
 ensure_fstab "/mnt/tv/Rookie Cops 2022" "$BASE/cops-rookie"
-ensure_fstab "/mnt/tv/Come Fly with Me (2010)" "$BASE/comedy"
+ensure_fstab "/mnt/tv/_Broadcast-Comedy" "$BASE/comedy"
+ensure_fstab "/mnt/tv/_Broadcast-Below-Deck" "$BASE/below-deck"
 
 ls -la "$BASE"
 find "$BASE/toon-box" -name "*.mkv" | head -5

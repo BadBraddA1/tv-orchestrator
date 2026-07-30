@@ -1,7 +1,12 @@
 # Orca Broadcast — Live TV channel director
 
 Orca is no longer the household **request portal** (use **Seerr** for that).  
-It is the **station director**: schedule → download to staging → air on **Plex Live TV** via **ErsatzTV** → delete.
+It is the **station director** for Plex Live TV via **ErsatzTV**.
+
+**Library mode (what we run):** channels play existing `/media/tv` folders (no per-slot NZBGet).  
+Comedy uses `_Broadcast-Comedy` (Office, Parks & Rec, Brooklyn 99, Community, Always Sunny, Schitt’s Creek, Abbott, New Girl, Modern Family, Seinfeld, Come Fly with Me). Below Deck uses `_Broadcast-Below-Deck`.
+
+**Guide tip:** `http://<orca>:3080/xmltv.xml` proxies ErsatzTV’s real titles in library mode (fixes “Waiting for Orca schedule fill”).
 
 ## What you get
 

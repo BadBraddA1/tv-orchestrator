@@ -271,7 +271,7 @@ async function handleApi(
   // Public XMLTV for Plex (no auth — Plex cannot log in)
   if ((path === "/xmltv.xml" || path === "/api/broadcast/xmltv") && method === "GET") {
     const hours = Number.parseInt(url.searchParams.get("hours") || "48", 10);
-    const body = buildBroadcastXmltv(Number.isFinite(hours) ? hours : 48);
+    const body = await buildBroadcastXmltv(Number.isFinite(hours) ? hours : 48);
     res.writeHead(200, {
       "Content-Type": "application/xml; charset=utf-8",
       "Cache-Control": "no-cache",
@@ -1228,7 +1228,7 @@ export async function startServer(): Promise<void> {
       // Pretty public XMLTV URL for Plex (same payload as /api/broadcast/xmltv)
       if (url.pathname === "/xmltv.xml" && (req.method || "GET") === "GET") {
         const hours = Number.parseInt(url.searchParams.get("hours") || "48", 10);
-        const body = buildBroadcastXmltv(Number.isFinite(hours) ? hours : 48);
+        const body = await buildBroadcastXmltv(Number.isFinite(hours) ? hours : 48);
         res.writeHead(200, {
           "Content-Type": "application/xml; charset=utf-8",
           "Cache-Control": "no-cache",

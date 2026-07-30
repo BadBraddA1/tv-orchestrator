@@ -4,9 +4,32 @@ import {
   listChannels,
   listScheduleBlocks,
 } from "../db/repo.js";
+import { getSetting } from "../db/settings.js";
 
 export function ersatztvConfigured(): boolean {
   return Boolean(config.ersatztv.url);
+}
+
+/**
+ * In library mode Orca does not fill schedule_blocks (no NZBGet hopper).
+ * Prefer ErsatzTV's own XMLTV so Plex shows real episode titles instead of
+ * "Waiting for Orca schedule fill".
+ */
+export async function fetchErsatzTvXmltv(): Promise<string | null> {
+  const base = config.ersatztv.url?.replace(/\/$/, "");
+  if (!base) return null;
+  try {
+    const res = await fetch(`${base}/iptv/xmltv.xml`, {
+      method: "GET",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    const body = await res.text();
+    if (!body.includes("<programme") || body.length < 500) return null;
+    return body;
+  } catch {
+    return null;
+  }
 }
 
 function xmltvTime(d: Date): string {
@@ -28,9 +51,17 @@ function escXml(s: string): string {
 /**
  * XMLTV for Plex Live TV mapping. Public (no auth) — Plex cannot send cookies.
  * Channel ids match ErsatzTV-style C{n}.ersatztv.org plus numeric display-names.
+ *
+ * Library mode: proxy ErsatzTV's guide (real playout titles). Hopper mode: Orca blocks.
  */
-export function buildBroadcastXmltv(hours = 48): string {
+export async function buildBroadcastXmltv(hours = 48): Promise<string> {
   ensureDefaultChannels();
+  const libraryMode = getSetting("broadcast_library_mode") === "1";
+  if (libraryMode) {
+    const etv = await fetchErsatzTvXmltv();
+    if (etv) return etv;
+  }
+
   const now = new Date();
   const horizon = new Date(now.getTime() + hours * 3600_000);
   const stations = listChannels().filter((c) => c.enabled && (c.channel_number || 0) > 0);
@@ -94,7 +125,8 @@ export function buildBroadcastXmltv(hours = 48): string {
     );
   }
 
-  // If a station has no blocks yet, still emit hourly filler so Plex has EPG rows to map
+  // No hopper blocks yet — still emit hourly EPG rows so Plex can map channels.
+  // Prefer station name over the old "Waiting for Orca schedule fill" wording.
   for (const st of stations) {
     const has = blocks.some((b) => b.station_id === st.id);
     if (has) continue;
@@ -107,7 +139,11 @@ export function buildBroadcastXmltv(hours = 48): string {
       lines.push(
         `  <programme start="${xmltvTime(start)}" stop="${xmltvTime(stop)}" channel="${id}">`,
         `    <title>${escXml(st.name)}</title>`,
-        `    <desc>Waiting for Orca schedule fill</desc>`,
+        `    <desc>${escXml(
+          libraryMode
+            ? `${st.name} · library rotation (ErsatzTV guide unavailable)`
+            : `${st.name} · schedule building`,
+        )}</desc>`,
         `  </programme>`,
       );
     }
