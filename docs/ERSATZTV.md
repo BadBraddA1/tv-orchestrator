@@ -81,7 +81,19 @@ Wired by default:
 - **Comedy** → `_Broadcast-Comedy` (Come Fly with Me + sitcoms: The Office, Parks & Rec, Brooklyn Nine-Nine, Community, Always Sunny, Schitt’s Creek, Abbott Elementary, New Girl, Modern Family, Seinfeld)
 - **Below Deck** → `_Broadcast-Below-Deck` (main + Mediterranean / Sailing Yacht / Adventure / Down Under)
 
-## Guide / “Waiting for Orca schedule fill”
+## Faster Live TV starts
+
+Plex Live TV (HDHomeRun/MPEG-TS) cannot do “start blurry then ramp to file quality” mid-stream — one encode profile for the whole tune.
+
+What we use instead:
+
+1. **Keep Running** idle behavior on each channel (transcoder stays up after you leave)
+2. **Segmenter idle timeout** `900s` + **initial segment count** `1` (start as soon as first segment exists)
+3. **Prewarm timer** on the Orca CT: `/opt/tv-orchestrator/scripts/prewarm-channels.sh` every 10 minutes via `orca-channel-prewarm.timer`
+
+Result: first cold tune can still take several seconds; **retunes / recently warmed channels** are typically sub-second. Tradeoff: background CPU while channels stay warm.
+
+Also set Plex DVR device **Transcoder Quality → Original format** so Plex doesn’t re-encode on top.
 
 In **library mode** Orca does not NZBGet/stage per schedule slot. Plex’s guide URL `http://<orca>:3080/xmltv.xml` now **proxies ErsatzTV’s real playout guide** (`:8409/iptv/xmltv.xml`) so you see episode titles instead of the old filler text.
 
