@@ -16,9 +16,34 @@ async function ping(url: string, timeoutMs = 3500): Promise<boolean> {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: ac.signal, redirect: "manual" });
+    const res = await fetch(url, {
+      signal: ac.signal,
+      redirect: "manual",
+      // Proxmox uses a self-signed cert
+      ...(url.startsWith("https:") ? { tls: undefined } : {}),
+    } as RequestInit);
     return res.status > 0 && res.status < 500;
   } catch {
+    // Node fetch rejects self-signed HTTPS — treat TLS handshake as "up enough" for Proxmox
+    if (url.startsWith("https://")) {
+      try {
+        const { request } = await import("node:https");
+        return await new Promise<boolean>((resolve) => {
+          const req = request(url, { method: "GET", rejectUnauthorized: false, timeout: timeoutMs }, (res) => {
+            res.resume();
+            resolve(true);
+          });
+          req.on("error", () => resolve(false));
+          req.on("timeout", () => {
+            req.destroy();
+            resolve(false);
+          });
+          req.end();
+        });
+      } catch {
+        return false;
+      }
+    }
     return false;
   } finally {
     clearTimeout(t);
@@ -86,7 +111,7 @@ const COMPANIONS: Array<{ id: string; name: string; href: string; probe: string 
   { id: "prowlarr", name: "Prowlarr", href: "http://10.0.0.210:30050", probe: "http://10.0.0.210:30050" },
   { id: "seerr", name: "Seerr", href: "http://10.0.0.130:5055", probe: "http://10.0.0.130:5055" },
   { id: "orca", name: "Orca", href: "http://10.0.0.167:3080", probe: "http://10.0.0.167:3080/api/health" },
-  { id: "ersatztv", name: "ErsatzTV", href: "http://10.0.0.167:8409", probe: "http://10.0.0.167:8409" },
+  { id: "ersatztv", name: "ErsatzTV", href: "http://10.0.0.167:8409", probe: "http://ersatztv:8409" },
   { id: "bazarr", name: "Bazarr", href: "http://10.0.0.209:6767", probe: "http://10.0.0.209:6767" },
   { id: "maintainerr", name: "Maintainerr", href: "http://10.0.0.114:6246", probe: "http://10.0.0.114:6246" },
   { id: "cleanuparr", name: "Cleanuparr", href: "http://10.0.0.136:11011", probe: "http://10.0.0.136:11011" },
