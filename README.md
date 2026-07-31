@@ -106,17 +106,18 @@ npm run dev
 
 ## Media Ops glance dashboard
 
-Built into **Orca** (not the old Homepage board):
+Standalone control room (not an Orca tab):
 
-**http://10.0.0.167:3080** → sign in as admin → **Ops** tab
+**http://10.0.0.167:3080/ops**
 
-| Section | What you see |
+Sign in if prompted, then bookmark that URL. Equal dense board:
+
+| Zone | What you see |
 | --- | --- |
-| **Now Playing** | Tautulli streams / transcodes |
-| **Downloads** | NZBGet live queue |
-| ***arr queues** | Sonarr + Radarr |
-| **Live TV** | ErsatzTV health + station status |
-| **Stack** | Up/down chips for Plex, *arr, Bazarr, Maintainerr, etc. |
+| **Playing** | Streams + Direct / Transcode |
+| **Downloads** | NZBGet speed/queue + Sonarr/Radarr |
+| **Live TV** | Station strip + ErsatzTV health |
+| **Stack** | Up/down chips for the whole fleet |
 
 Homarr (`http://10.0.0.85:7575`) stays the app launcher.
 

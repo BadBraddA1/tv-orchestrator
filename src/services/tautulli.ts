@@ -41,6 +41,13 @@ export interface TautulliSession {
   progress_percent?: number;
   player?: string;
   state?: string;
+  /** direct play | copy | transcode (Tautulli) */
+  transcode_decision?: string;
+  video_decision?: string;
+  stream_video_decision?: string;
+  quality_profile?: string;
+  bitrate?: number | string;
+  stream_bitrate?: number | string;
 }
 
 export interface TautulliHistoryRow {

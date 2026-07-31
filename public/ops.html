@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#121c28" />
+    <meta name="description" content="Media Ops — playing, downloads, Live TV, stack health" />
+    <title>Media Ops</title>
+    <link rel="icon" href="/img/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/ops.css" />
+  </head>
+  <body>
+    <div id="ops" class="ops-shell">
+      <header class="ops-top">
+        <div class="brand-lockup">
+          <img class="brand-mark" src="/img/orca.svg" width="36" height="36" alt="" />
+          <div>
+            <p class="eyebrow">Control room</p>
+            <h1>Media Ops</h1>
+          </div>
+        </div>
+        <div class="ops-top-right">
+          <span id="opsClock" class="ops-clock" aria-live="polite"></span>
+          <span id="opsPulse" class="ops-pulse" title="Auto-refresh">live</span>
+          <button type="button" id="opsRefresh" class="ghost">Refresh</button>
+          <a class="ghost linkish" href="/">Orca</a>
+        </div>
+      </header>
+
+      <p id="opsError" class="ops-error" hidden></p>
+
+      <main class="ops-board" aria-live="polite">
+        <section class="zone" id="zone-playing" aria-labelledby="z-playing">
+          <div class="zone-head">
+            <h2 id="z-playing">Playing</h2>
+            <span id="playingCount" class="zone-count">0</span>
+          </div>
+          <div id="playingBody" class="zone-body"></div>
+        </section>
+
+        <section class="zone" id="zone-downloads" aria-labelledby="z-downloads">
+          <div class="zone-head">
+            <h2 id="z-downloads">Downloads</h2>
+            <span id="downloadsMeta" class="zone-count">—</span>
+          </div>
+          <div id="downloadsBody" class="zone-body"></div>
+        </section>
+
+        <section class="zone" id="zone-live" aria-labelledby="z-live">
+          <div class="zone-head">
+            <h2 id="z-live">Live TV</h2>
+            <span id="liveMeta" class="zone-count">—</span>
+          </div>
+          <div id="liveBody" class="zone-body"></div>
+        </section>
+
+        <section class="zone" id="zone-stack" aria-labelledby="z-stack">
+          <div class="zone-head">
+            <h2 id="z-stack">Stack</h2>
+            <span id="stackMeta" class="zone-count">—</span>
+          </div>
+          <div id="stackBody" class="zone-body stack-grid"></div>
+        </section>
+      </main>
+    </div>
+    <script src="/js/ops.js" type="module"></script>
+  </body>
+</html>

@@ -1254,6 +1254,15 @@ export async function startServer(): Promise<void> {
         return;
       }
 
+      // Standalone Media Ops control room (not the Orca tab SPA)
+      if ((url.pathname === "/ops" || url.pathname === "/ops/") && (req.method || "GET") === "GET") {
+        const filePath = join(publicDir, "ops.html");
+        const data = await readFile(filePath);
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(data);
+        return;
+      }
+
       let path = url.pathname === "/" ? "/index.html" : url.pathname;
       if (path.includes("..")) {
         res.writeHead(400).end("Bad path");

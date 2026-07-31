@@ -159,14 +159,27 @@ export async function getOpsOverview() {
     playing: {
       configured: tautulliConfigured(),
       streamCount: playing.stream_count || 0,
-      sessions: (playing.sessions || []).map((s) => ({
-        user: s.friendly_name || s.user,
-        title: s.full_title || s.title || s.grandparent_title || "Unknown",
-        player: s.player,
-        state: s.state,
-        progress: s.progress_percent,
-        mediaType: s.media_type,
-      })),
+      sessions: (playing.sessions || []).map((s) => {
+        const decision = String(
+          s.transcode_decision || s.video_decision || s.stream_video_decision || "",
+        ).toLowerCase();
+        let delivery: "direct" | "transcode" | "copy" | "unknown" = "unknown";
+        if (decision.includes("transcode")) delivery = "transcode";
+        else if (decision.includes("copy") || decision.includes("directstream")) delivery = "copy";
+        else if (decision.includes("direct") || decision === "direct play") delivery = "direct";
+        return {
+          user: s.friendly_name || s.user,
+          title: s.full_title || s.title || s.grandparent_title || "Unknown",
+          player: s.player,
+          state: s.state,
+          progress: s.progress_percent,
+          mediaType: s.media_type,
+          delivery,
+          decision: s.transcode_decision || s.video_decision || s.stream_video_decision || null,
+          quality: s.quality_profile || null,
+          bitrate: s.stream_bitrate || s.bitrate || null,
+        };
+      }),
     },
     downloads: {
       ok: Boolean(downloads?.ok),
