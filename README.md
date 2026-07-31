@@ -104,6 +104,22 @@ npm run dev
 - Old `tv-orch` / Orca request flow can stay for gap-fill, but family requests should go through Seerr.
 - Fleet deploy notes: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
+## Media Ops glance dashboard
+
+One-page ops board for downloads, what’s playing/transcoding, Live TV, and companion tools:
+
+**http://10.0.0.91:3088** (Homepage on Docker CT **100**)
+
+| Section | What you see |
+| --- | --- |
+| **Now Playing** | Tautulli streams + Plex sessions |
+| **Downloads** | NZBGet / Sonarr / Radarr / Prowlarr queues |
+| **Live TV & Transcode** | Orca + ErsatzTV (up/down) · Tdarr when running |
+| **Library tools** | Seerr, Bazarr, Recyclarr, Cleanuparr, Huntarr |
+| **Infra** | Homarr launcher, Proxmox, TrueNAS |
+
+Config lives on the CT at `/Docker/media-ops-homepage/`. Homarr (`http://10.0.0.85:7575`) stays the app launcher; this board is for live status at a glance.
+
 ## Brand
 
 Broadcast · Precise · Quietly capable — living-room control room, not another Overseerr clone.
