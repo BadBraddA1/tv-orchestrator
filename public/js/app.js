@@ -339,6 +339,10 @@
     document.querySelectorAll(".admin-only").forEach((el) => {
       el.hidden = me.role !== "admin";
     });
+    const startTab = me.role === "admin" ? "ops" : "search";
+    const startBtn = document.querySelector(`.tab[data-tab="${startTab}"]`);
+    if (startBtn) startBtn.click();
+    else document.querySelector('.tab[data-tab="search"]')?.click();
   }
 
   function showLogin() {
@@ -555,6 +559,8 @@
         p.hidden = p.id !== `tab-${tab}`;
       });
       if (tab !== "downloads") stopDownloadsPoll();
+      if (tab !== "ops") stopOpsPoll();
+      if (tab === "ops") loadOps(true);
       if (tab === "library") loadLibrary();
       if (tab === "movies") {
         loadMovieQueue();
@@ -1267,6 +1273,172 @@
       if (retryAllFailedBtn) retryAllFailedBtn.hidden = true;
     }
   }
+
+  let opsPollTimer = null;
+  function stopOpsPoll() {
+    if (opsPollTimer) {
+      clearInterval(opsPollTimer);
+      opsPollTimer = null;
+    }
+  }
+
+  function opsRow(title, meta, chip) {
+    const row = document.createElement("div");
+    row.className = "series-row";
+    row.innerHTML = `
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        <p class="meta">${escapeHtml(meta || "")}</p>
+      </div>
+      ${chip ? `<span class="chip ${chip.cls || ""}">${escapeHtml(chip.text)}</span>` : ""}
+    `;
+    return row;
+  }
+
+  async function loadOps(showLoading) {
+    const stamp = document.getElementById("opsStamp");
+    const stats = document.getElementById("opsStats");
+    const playing = document.getElementById("opsPlaying");
+    const downloads = document.getElementById("opsDownloads");
+    const arr = document.getElementById("opsArr");
+    const live = document.getElementById("opsLive");
+    const services = document.getElementById("opsServices");
+    if (!playing || !downloads || !arr || !live || !services) return;
+    if (showLoading) {
+      playing.innerHTML = "<p class='sub'>Loading…</p>";
+      downloads.innerHTML = "";
+      arr.innerHTML = "";
+      live.innerHTML = "";
+      services.replaceChildren();
+      if (stats) stats.replaceChildren();
+    }
+    try {
+      const data = await api("/api/ops/overview");
+      if (stamp) {
+        const t = data.generatedAt ? new Date(data.generatedAt) : new Date();
+        stamp.textContent = `Updated ${t.toLocaleTimeString()}`;
+      }
+      if (stats) {
+        stats.replaceChildren();
+        const tiles = [
+          { label: "Streams", value: String(data.playing?.streamCount || 0) },
+          { label: "NZB queue", value: String(data.downloads?.queueCount || 0) },
+          { label: "Sonarr", value: String(data.sonarr?.count || 0) },
+          { label: "Radarr", value: String(data.radarr?.count || 0) },
+          {
+            label: "Stack up",
+            value: `${(data.services || []).filter((s) => s.ok).length}/${(data.services || []).length}`,
+          },
+        ];
+        for (const tile of tiles) {
+          const el = document.createElement("div");
+          el.className = "stat-tile";
+          el.innerHTML = `<div class="stat-value">${escapeHtml(tile.value)}</div><div class="stat-label">${escapeHtml(tile.label)}</div>`;
+          stats.appendChild(el);
+        }
+      }
+
+      playing.replaceChildren();
+      const sessions = data.playing?.sessions || [];
+      if (!data.playing?.configured) {
+        playing.innerHTML = "<p class='sub'>Tautulli not configured — set URL + API key in Admin.</p>";
+      } else if (!sessions.length) {
+        playing.innerHTML = "<p class='sub'>Nothing playing right now.</p>";
+      } else {
+        for (const s of sessions) {
+          playing.appendChild(
+            opsRow(
+              s.title,
+              [s.user, s.player, s.mediaType].filter(Boolean).join(" · "),
+              { text: s.state || "play", cls: s.state === "playing" ? "ok" : "warn" },
+            ),
+          );
+        }
+      }
+
+      downloads.replaceChildren();
+      if (data.downloads && data.downloads.ok === false) {
+        downloads.innerHTML = `<p class="error">${escapeHtml(data.downloads.error || "NZBGet offline")}</p>`;
+      } else {
+        const q = data.downloads?.queue || [];
+        if (!q.length) {
+          downloads.innerHTML = "<p class='sub'>Download queue idle.</p>";
+        } else {
+          for (const item of q) {
+            downloads.appendChild(
+              opsRow(
+                item.name || "Download",
+                `${item.category || "—"} · ${item.percent ?? 0}% · ${item.status || ""}`,
+                { text: `${item.percent ?? 0}%`, cls: "ok" },
+              ),
+            );
+          }
+        }
+        if (data.downloads?.paused) {
+          downloads.prepend(opsRow("NZBGet paused", "Resume in NZBGet if grabs are stuck", { text: "paused", cls: "warn" }));
+        }
+      }
+
+      arr.replaceChildren();
+      const sonarrItems = data.sonarr?.items || [];
+      const radarrItems = data.radarr?.items || [];
+      if (!sonarrItems.length && !radarrItems.length) {
+        arr.innerHTML = "<p class='sub'>Sonarr / Radarr queues empty.</p>";
+      } else {
+        for (const item of sonarrItems) {
+          arr.appendChild(opsRow(item.title, `Sonarr · ${item.status || ""}`, { text: "TV", cls: "ok" }));
+        }
+        for (const item of radarrItems) {
+          arr.appendChild(opsRow(item.title, `Radarr · ${item.status || ""}`, { text: "Movie", cls: "ok" }));
+        }
+      }
+
+      live.replaceChildren();
+      const ersatzChip = data.liveTv?.ersatzOk
+        ? { text: "tuner up", cls: "ok" }
+        : { text: "tuner down", cls: "err" };
+      live.appendChild(opsRow("ErsatzTV", data.liveTv?.ersatzUrl || "", ersatzChip));
+      const airing = data.liveTv?.airing || [];
+      if (!airing.length) {
+        const stations = data.liveTv?.stations || [];
+        live.appendChild(
+          opsRow(
+            "Library channels",
+            stations.map((s) => `${s.name} (${s.stagingCount})`).join(" · ") || "No station data",
+            { text: "live", cls: "ok" },
+          ),
+        );
+      } else {
+        for (const slot of airing) {
+          live.appendChild(
+            opsRow(slot.title, `${slot.station} · ${slot.status}`, {
+              text: slot.status,
+              cls: slot.status === "airing" ? "ok" : "warn",
+            }),
+          );
+        }
+      }
+
+      services.replaceChildren();
+      for (const svc of data.services || []) {
+        const a = document.createElement("a");
+        a.className = `ops-svc ${svc.ok ? "ok" : "down"}`;
+        a.href = svc.href;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.innerHTML = `<span class="ops-dot"></span><span>${escapeHtml(svc.name)}</span>`;
+        services.appendChild(a);
+      }
+
+      stopOpsPoll();
+      opsPollTimer = setInterval(() => loadOps(false), 15000);
+    } catch (err) {
+      playing.innerHTML = `<p class="error">${escapeHtml(err.message)}</p>`;
+      stopOpsPoll();
+    }
+  }
+
+  document.getElementById("opsRefreshBtn")?.addEventListener("click", () => loadOps(true));
 
   async function loadDownloads(showLoading) {
     if (!downloadsQueue || !downloadsHistory) return;

@@ -106,25 +106,25 @@ npm run dev
 
 ## Media Ops glance dashboard
 
-One-page ops board for downloads, what’s playing/transcoding, Live TV, and companion tools:
+Built into **Orca** (not the old Homepage board):
 
-**http://10.0.0.91:3088** (Homepage on Docker CT **100**)
+**http://10.0.0.167:3080** → sign in as admin → **Ops** tab
 
 | Section | What you see |
 | --- | --- |
-| **Now Playing** | Tautulli streams + Plex sessions |
-| **Downloads** | NZBGet / Sonarr / Radarr / Prowlarr queues |
-| **Live TV & Transcode** | Orca + ErsatzTV (up/down) · Tdarr when running |
-| **Library tools** | Seerr, Bazarr, Kometa, Maintainerr, Recyclarr, Cleanuparr, Huntarr |
-| **Infra** | Homarr launcher, Proxmox, TrueNAS |
+| **Now Playing** | Tautulli streams / transcodes |
+| **Downloads** | NZBGet live queue |
+| ***arr queues** | Sonarr + Radarr |
+| **Live TV** | ErsatzTV health + station status |
+| **Stack** | Up/down chips for Plex, *arr, Bazarr, Maintainerr, etc. |
 
-Config lives on the CT at `/Docker/media-ops-homepage/`. Homarr (`http://10.0.0.85:7575`) stays the app launcher; this board is for live status at a glance.
+Homarr (`http://10.0.0.85:7575`) stays the app launcher.
 
 ### Companion LXCs (Proxmox)
 
 | CT | Host | URL | Role |
 | --- | --- | --- | --- |
-| **611** | `10.0.0.209` | http://10.0.0.209:6767 | **Bazarr** — English subs via TrueNAS Sonarr/Radarr |
+| **611** | `10.0.0.209` | http://10.0.0.209:6767 | **Bazarr** — English subs via TrueNAS Sonarr/Radarr (`use_sonarr` / `use_radarr` on) |
 | **612** | `10.0.0.169` | (CLI / nightly 04:45) | **Kometa** — channel-themed Plex collections |
 | **613** | `10.0.0.114` | http://10.0.0.114:6246 | **Maintainerr** — cleanup rules (configure dry-run first) |
 

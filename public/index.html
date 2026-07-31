@@ -82,7 +82,8 @@
         </header>
 
         <nav class="tabs">
-          <button type="button" data-tab="search" class="tab active">TV</button>
+          <button type="button" data-tab="ops" class="tab active admin-only" hidden>Ops</button>
+          <button type="button" data-tab="search" class="tab">TV</button>
           <button type="button" data-tab="movies" class="tab">Movies</button>
           <button type="button" data-tab="movie-library" class="tab">Movie library</button>
           <button type="button" data-tab="channels" class="tab">Broadcast</button>
@@ -94,7 +95,44 @@
           <button type="button" data-tab="admin" class="tab admin-only" hidden>Admin</button>
         </nav>
 
-        <div id="tab-search" class="tab-panel">
+        <div id="tab-ops" class="tab-panel" hidden>
+          <div class="cleanup-hero">
+            <div>
+              <p class="eyebrow">Control room</p>
+              <h2 class="panel-heading">Media Ops</h2>
+              <p class="sub">
+                What’s playing, downloading, and live — plus a health strip for the whole stack.
+              </p>
+            </div>
+            <div class="toolbar">
+              <button type="button" id="opsRefreshBtn" class="ghost">Refresh</button>
+            </div>
+          </div>
+          <p id="opsStamp" class="sub"></p>
+          <div id="opsStats" class="stat-rail" aria-live="polite"></div>
+          <div class="ops-grid">
+            <section class="ops-panel">
+              <h2 class="section-title">Now playing</h2>
+              <div id="opsPlaying" class="series-list"></div>
+            </section>
+            <section class="ops-panel">
+              <h2 class="section-title">Downloads</h2>
+              <div id="opsDownloads" class="series-list"></div>
+            </section>
+            <section class="ops-panel">
+              <h2 class="section-title">*arr queues</h2>
+              <div id="opsArr" class="series-list"></div>
+            </section>
+            <section class="ops-panel">
+              <h2 class="section-title">Live TV</h2>
+              <div id="opsLive" class="series-list"></div>
+            </section>
+          </div>
+          <h2 class="section-title">Stack</h2>
+          <div id="opsServices" class="ops-services"></div>
+        </div>
+
+        <div id="tab-search" class="tab-panel" hidden>
           <form id="searchForm" class="search-row">
             <input id="searchInput" placeholder="Search TV shows…" autocomplete="off" />
             <button type="submit">Search</button>

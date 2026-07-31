@@ -83,6 +83,7 @@ import {
 import { monitorMoviesOnce, pollMovieDownloadsOnce } from "./workers/movies.js";
 import { maintainChannelsOnce, getBroadcastGuide, listStagingTree } from "./workers/channels.js";
 import { probeErsatzTv, plexTunerSetupHints, buildBroadcastXmltv } from "./services/ersatztv.js";
+import { getOpsOverview } from "./services/ops.js";
 import {
   tautulliConfigured,
   getActivity,
@@ -917,6 +918,15 @@ async function handleApi(
 
   if (path === "/api/activity" && method === "GET") {
     sendJson(res, 200, listActivity(150));
+    return true;
+  }
+
+  if (path === "/api/ops/overview" && method === "GET") {
+    try {
+      sendJson(res, 200, await getOpsOverview());
+    } catch (err) {
+      sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+    }
     return true;
   }
 
