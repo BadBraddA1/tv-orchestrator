@@ -122,7 +122,7 @@ Five live prototypes on the real stack — open the gallery and click through:
 | 2 | `/lab/pulse` | Media Stack Pulse — *arr health cards |
 | 3 | `/lab/analytics` | Analytics Wall — graphs first |
 | 4 | `/lab/cockpit` | One-URL Cockpit — iframes + action bar |
-| 5 | `/lab/deck` | Command Deck — big restart/update buttons |
+| 5 | `/lab/deck` | Command Deck — dense action grid (downloads, Live TV, library, quality, CT restarts) + filter + action log |
 
 Sign in if prompted, then bookmark that URL. Equal dense board:
 

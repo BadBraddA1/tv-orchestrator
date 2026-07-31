@@ -8,57 +8,111 @@
     <link rel="stylesheet" href="/css/lab.css" />
   </head>
   <body>
-    <div class="lab-shell">
+    <div class="lab-shell lab-shell-wide">
       <header class="lab-top">
         <div>
-          <p class="eyebrow">Option 5 · OliveTin / custom ops vibe</p>
+          <p class="eyebrow">Option 5 · expanded</p>
           <h1>Command Deck</h1>
         </div>
         <div id="nav"></div>
       </header>
       <div id="kpis" class="kpi-row"></div>
-      <p class="meta" style="margin-bottom:0.75rem">One-tap restart / update / pause. Confirm mentally before red buttons — they hit real CTs when SSH is wired.</p>
-      <div id="deck" class="deck-grid"></div>
+      <div class="deck-toolbar">
+        <input id="filter" type="search" placeholder="Filter actions…" autocomplete="off" />
+        <p class="meta" id="count"></p>
+      </div>
+      <div id="deck"></div>
       <div class="grid-2" style="margin-top:1rem">
         <section class="panel">
           <h2>Playing</h2>
           <div id="playing"></div>
         </section>
         <section class="panel">
-          <h2>Stack</h2>
+          <h2>Open stack</h2>
           <div id="stack" class="svc-grid"></div>
         </section>
       </div>
+      <section class="panel" style="margin-top:0.85rem">
+        <h2>Action log</h2>
+        <div id="log" class="action-log meta">No actions yet this session.</div>
+      </section>
     </div>
     <script type="module">
       import {
         ensureAuth, loadBundle, navHtml, renderKpis, renderPlaying, renderStack, runAction, esc,
       } from "/js/lab-common.js";
+
+      const GROUP_ORDER = ["Downloads", "Live TV", "Library", "Quality", "Transcode", "UI"];
+      let actions = [];
+      const logEl = document.getElementById("log");
+      const lines = [];
+
       document.getElementById("nav").innerHTML = navHtml("/lab/deck");
       await ensureAuth();
-      async function tick() {
-        const b = await loadBundle();
-        renderKpis(document.getElementById("kpis"), b);
-        renderPlaying(document.getElementById("playing"), b.overview);
-        renderStack(document.getElementById("stack"), b.overview);
-        const deck = document.getElementById("deck");
-        deck.innerHTML = b.actions
-          .map(
-            (a) => `<button type="button" class="deck-btn ${a.danger ? "danger" : ""}" data-action="${esc(a.id)}">
-            <strong>${esc(a.label)}</strong>
-            <small>${esc(a.group)}</small>
-          </button>`,
-          )
-          .join("");
-        deck.querySelectorAll("[data-action]").forEach((btn) => {
-          btn.addEventListener("click", () => {
-            if (btn.classList.contains("danger") && !confirm(`Run: ${btn.querySelector("strong").textContent}?`)) return;
-            runAction(btn.dataset.action, btn);
+
+      function pushLog(msg, isErr) {
+        const ts = new Date().toLocaleTimeString();
+        lines.unshift(`${ts} · ${msg}`);
+        if (lines.length > 24) lines.pop();
+        logEl.innerHTML = lines.map((l) => `<div class="${isErr ? "log-err" : ""}">${esc(l)}</div>`).join("");
+      }
+
+      function renderDeck() {
+        const q = (document.getElementById("filter").value || "").trim().toLowerCase();
+        const filtered = actions.filter((a) => {
+          if (!q) return true;
+          return `${a.label} ${a.group} ${a.blurb || ""} ${a.id}`.toLowerCase().includes(q);
+        });
+        document.getElementById("count").textContent = `${filtered.length} / ${actions.length} actions`;
+
+        const byGroup = new Map();
+        for (const a of filtered) {
+          if (!byGroup.has(a.group)) byGroup.set(a.group, []);
+          byGroup.get(a.group).push(a);
+        }
+        const order = [
+          ...GROUP_ORDER.filter((g) => byGroup.has(g)),
+          ...[...byGroup.keys()].filter((g) => !GROUP_ORDER.includes(g)),
+        ];
+
+        document.getElementById("deck").innerHTML = order
+          .map((group) => {
+            const btns = byGroup
+              .get(group)
+              .map(
+                (a) => `<button type="button" class="deck-btn ${a.danger ? "danger" : ""}" data-action="${esc(a.id)}">
+                <strong>${esc(a.label)}</strong>
+                <small>${esc(a.blurb || a.group)}</small>
+              </button>`,
+              )
+              .join("");
+            return `<section class="deck-section"><h2>${esc(group)}</h2><div class="deck-grid">${btns}</div></section>`;
+          })
+          .join("") || `<p class="meta">No actions match.</p>`;
+
+        document.querySelectorAll("#deck [data-action]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const label = btn.querySelector("strong").textContent;
+            if (btn.classList.contains("danger") && !confirm(`Run: ${label}?`)) return;
+            const r = await runAction(btn.dataset.action, btn);
+            pushLog(r?.message || label, !r?.ok);
           });
         });
       }
+
+      document.getElementById("filter").addEventListener("input", renderDeck);
+
+      async function tick() {
+        const b = await loadBundle();
+        actions = b.actions || [];
+        renderKpis(document.getElementById("kpis"), b);
+        renderPlaying(document.getElementById("playing"), b.overview);
+        renderStack(document.getElementById("stack"), b.overview);
+        renderDeck();
+      }
+
       await tick();
-      setInterval(tick, 12000);
+      setInterval(tick, 15000);
     </script>
   </body>
 </html>
