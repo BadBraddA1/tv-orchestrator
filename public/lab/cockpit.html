@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>4 · One-URL Cockpit</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/lab.css" />
+  </head>
+  <body>
+    <div class="lab-shell" style="max-width:100%;padding-bottom:0.5rem">
+      <header class="lab-top">
+        <div>
+          <p class="eyebrow">Option 4 · Organizr vibe</p>
+          <h1>One-URL Cockpit</h1>
+        </div>
+        <div id="nav"></div>
+      </header>
+      <div id="actions" class="actions" style="margin-bottom:0.75rem"></div>
+      <div id="tabs" class="cockpit-tabs"></div>
+      <iframe id="frame" class="cockpit-frame" title="Embedded service"></iframe>
+      <p class="meta" style="margin-top:0.5rem">Some apps block iframes (X-Frame-Options). If a tab is blank, use “Open” — the action bar still works.</p>
+    </div>
+    <script type="module">
+      import { ensureAuth, loadBundle, navHtml, renderActions } from "/js/lab-common.js";
+      document.getElementById("nav").innerHTML = navHtml("/lab/cockpit");
+      await ensureAuth();
+      const tabs = [
+        { id: "sonarr", label: "Sonarr", url: "http://10.0.0.210:30113" },
+        { id: "radarr", label: "Radarr", url: "http://10.0.0.210:30025" },
+        { id: "nzbget", label: "NZBGet", url: "http://10.0.0.210:6789" },
+        { id: "tautulli", label: "Tautulli", url: "http://10.0.0.226:8181" },
+        { id: "plex", label: "Plex", url: "http://10.0.0.235:32400/web" },
+        { id: "orca", label: "Orca Broadcast", url: "http://10.0.0.167:3080" },
+        { id: "ersatz", label: "ErsatzTV", url: "http://10.0.0.167:8409" },
+        { id: "seerr", label: "Seerr", url: "http://10.0.0.130:5055" },
+        { id: "proxmox", label: "Proxmox", url: "https://10.0.0.34:8006" },
+        { id: "truenas", label: "TrueNAS", url: "http://10.0.0.210" },
+      ];
+      const tabsEl = document.getElementById("tabs");
+      const frame = document.getElementById("frame");
+      function show(tab) {
+        tabsEl.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.id === tab.id));
+        frame.src = tab.url;
+      }
+      tabsEl.innerHTML = tabs
+        .map((t) => `<button type="button" class="ghost" data-id="${t.id}">${t.label}</button>
+          <a class="ghost" style="padding:.4rem .55rem" href="${t.url}" target="_blank" rel="noopener">Open</a>`)
+        .join("");
+      // Fix: buttons and Open links interleaved messily - rebuild cleaner
+      tabsEl.innerHTML = tabs
+        .map(
+          (t) =>
+            `<span style="display:inline-flex;gap:.25rem;align-items:center">
+              <button type="button" class="ghost" data-id="${t.id}">${t.label}</button>
+              <a class="meta" href="${t.url}" target="_blank" rel="noopener">↗</a>
+            </span>`,
+        )
+        .join("");
+      tabsEl.querySelectorAll("button[data-id]").forEach((btn) => {
+        btn.addEventListener("click", () => show(tabs.find((t) => t.id === btn.dataset.id)));
+      });
+      show(tabs[0]);
+      const b = await loadBundle();
+      renderActions(document.getElementById("actions"), b.actions);
+    </script>
+  </body>
+</html>

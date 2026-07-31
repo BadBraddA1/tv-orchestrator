@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media Ops Lab</title>
+    <link rel="icon" href="/img/favicon.svg" type="image/svg+xml" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/lab.css" />
+  </head>
+  <body>
+    <div class="lab-shell">
+      <header class="lab-top">
+        <div>
+          <p class="eyebrow">Pick a direction</p>
+          <h1>Media Ops Lab</h1>
+        </div>
+        <div id="nav"></div>
+      </header>
+      <p class="meta">Five live prototypes on your real stack. Click through, note what you like, then tell me what to keep / merge.</p>
+      <div class="gallery">
+        <a class="card-link" href="/lab/mission">
+          <p class="eyebrow">Option 1</p>
+          <h2>Mission Control</h2>
+          <p>Tower view: KPI gauges, who is watching, download meters, Proxmox-style restart rail for CTs and Live TV.</p>
+        </a>
+        <a class="card-link" href="/lab/pulse">
+          <p class="eyebrow">Option 2</p>
+          <h2>Media Stack Pulse</h2>
+          <p>*arr health board: Sonarr/Radarr/NZBGet/Bazarr-style cards, queue depth, stack chips, focused actions.</p>
+        </a>
+        <a class="card-link" href="/lab/analytics">
+          <p class="eyebrow">Option 3</p>
+          <h2>Analytics Wall</h2>
+          <p>Graphs first: streams, transcodes, NZB speed, queue depth over the session. Trends over buttons.</p>
+        </a>
+        <a class="card-link" href="/lab/cockpit">
+          <p class="eyebrow">Option 4</p>
+          <h2>One-URL Cockpit</h2>
+          <p>Action bar on top + iframe tabs into Sonarr, Radarr, NZBGet, Tautulli, Proxmox, Orca Broadcast.</p>
+        </a>
+        <a class="card-link" href="/lab/deck">
+          <p class="eyebrow">Option 5</p>
+          <h2>Command Deck</h2>
+          <p>Big restart/update buttons with a live KPI strip. Fast switcher for managing the ecosystem.</p>
+        </a>
+      </div>
+    </div>
+    <script type="module">
+      import { ensureAuth, navHtml } from "/js/lab-common.js";
+      document.getElementById("nav").innerHTML = navHtml("/lab");
+      await ensureAuth();
+    </script>
+  </body>
+</html>

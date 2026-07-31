@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>2 · Media Stack Pulse</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/lab.css" />
+  </head>
+  <body>
+    <div class="lab-shell">
+      <header class="lab-top">
+        <div>
+          <p class="eyebrow">Option 2 · Dashbrr vibe</p>
+          <h1>Media Stack Pulse</h1>
+        </div>
+        <div id="nav"></div>
+      </header>
+      <div id="cards" class="grid-3"></div>
+      <div class="grid-2" style="margin-top:0.85rem">
+        <section class="panel">
+          <h2>Live queues</h2>
+          <div id="downloads"></div>
+        </section>
+        <section class="panel">
+          <h2>Pipeline actions</h2>
+          <div id="actions" class="actions"></div>
+        </section>
+      </div>
+    </div>
+    <script type="module">
+      import { ensureAuth, loadBundle, navHtml, esc, renderDownloads, renderActions, fmtRate } from "/js/lab-common.js";
+      document.getElementById("nav").innerHTML = navHtml("/lab/pulse");
+      await ensureAuth();
+      function card(title, status, lines, href) {
+        const ok = status === "ok";
+        return `<a class="panel" href="${esc(href)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">
+          <div class="row-top"><h2 style="margin:0">${esc(title)}</h2><span class="chip ${ok ? "ok" : "err"}">${ok ? "up" : "down"}</span></div>
+          ${lines.map((l) => `<p class="meta" style="margin-top:.35rem">${esc(l)}</p>`).join("")}
+        </a>`;
+      }
+      async function tick() {
+        const b = await loadBundle();
+        const o = b.overview;
+        const svc = (id) => (o.services || []).find((s) => s.id === id);
+        const s = (id) => (svc(id)?.ok ? "ok" : "down");
+        document.getElementById("cards").innerHTML = [
+          card("Plex", s("plex"), [`${o.playing?.streamCount || 0} streams`, `${(o.playing?.sessions || []).filter((x) => x.delivery === "transcode").length} transcoding`], svc("plex")?.href || "#"),
+          card("Sonarr", s("sonarr"), [`Queue ${o.sonarr?.count || 0}`, (o.sonarr?.items?.[0]?.title || "Idle")], svc("sonarr")?.href || "#"),
+          card("Radarr", s("radarr"), [`Queue ${o.radarr?.count || 0}`, (o.radarr?.items?.[0]?.title || "Idle")], svc("radarr")?.href || "#"),
+          card("NZBGet", s("nzbget"), [fmtRate(o.downloads?.rateKbps), `${o.downloads?.queueCount || 0} in queue`], svc("nzbget")?.href || "#"),
+          card("Bazarr", s("bazarr"), ["Subtitles companion", "English profile"], svc("bazarr")?.href || "#"),
+          card("Live TV", o.liveTv?.ersatzOk ? "ok" : "down", ["ErsatzTV tuner", `${(o.liveTv?.stations || []).length} stations`], "http://10.0.0.167:8409"),
+          card("Seerr", s("seerr"), ["Requests portal", "Family front door"], svc("seerr")?.href || "#"),
+          card("Maintainerr", s("maintainerr"), ["Cleanup rules", "Dry-run first"], svc("maintainerr")?.href || "#"),
+          card("Tautulli", s("tautulli"), ["History + activity", "Watch analytics"], svc("tautulli")?.href || "#"),
+        ].join("");
+        renderDownloads(document.getElementById("downloads"), o);
+        renderActions(document.getElementById("actions"), b.actions, ["Downloads", "Quality", "Library", "Live TV"]);
+      }
+      await tick();
+      setInterval(tick, 12000);
+    </script>
+  </body>
+</html>

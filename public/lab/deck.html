@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>5 · Command Deck</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/lab.css" />
+  </head>
+  <body>
+    <div class="lab-shell">
+      <header class="lab-top">
+        <div>
+          <p class="eyebrow">Option 5 · OliveTin / custom ops vibe</p>
+          <h1>Command Deck</h1>
+        </div>
+        <div id="nav"></div>
+      </header>
+      <div id="kpis" class="kpi-row"></div>
+      <p class="meta" style="margin-bottom:0.75rem">One-tap restart / update / pause. Confirm mentally before red buttons — they hit real CTs when SSH is wired.</p>
+      <div id="deck" class="deck-grid"></div>
+      <div class="grid-2" style="margin-top:1rem">
+        <section class="panel">
+          <h2>Playing</h2>
+          <div id="playing"></div>
+        </section>
+        <section class="panel">
+          <h2>Stack</h2>
+          <div id="stack" class="svc-grid"></div>
+        </section>
+      </div>
+    </div>
+    <script type="module">
+      import {
+        ensureAuth, loadBundle, navHtml, renderKpis, renderPlaying, renderStack, runAction, esc,
+      } from "/js/lab-common.js";
+      document.getElementById("nav").innerHTML = navHtml("/lab/deck");
+      await ensureAuth();
+      async function tick() {
+        const b = await loadBundle();
+        renderKpis(document.getElementById("kpis"), b);
+        renderPlaying(document.getElementById("playing"), b.overview);
+        renderStack(document.getElementById("stack"), b.overview);
+        const deck = document.getElementById("deck");
+        deck.innerHTML = b.actions
+          .map(
+            (a) => `<button type="button" class="deck-btn ${a.danger ? "danger" : ""}" data-action="${esc(a.id)}">
+            <strong>${esc(a.label)}</strong>
+            <small>${esc(a.group)}</small>
+          </button>`,
+          )
+          .join("");
+        deck.querySelectorAll("[data-action]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            if (btn.classList.contains("danger") && !confirm(`Run: ${btn.querySelector("strong").textContent}?`)) return;
+            runAction(btn.dataset.action, btn);
+          });
+        });
+      }
+      await tick();
+      setInterval(tick, 12000);
+    </script>
+  </body>
+</html>

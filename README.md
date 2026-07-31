@@ -110,6 +110,20 @@ Standalone control room (not an Orca tab):
 
 **http://10.0.0.167:3080/ops**
 
+### Concept lab (pick a direction)
+
+Five live prototypes on the real stack — open the gallery and click through:
+
+**http://10.0.0.167:3080/lab**
+
+| # | URL | Idea |
+| --- | --- | --- |
+| 1 | `/lab/mission` | Mission Control — KPIs + restart rail |
+| 2 | `/lab/pulse` | Media Stack Pulse — *arr health cards |
+| 3 | `/lab/analytics` | Analytics Wall — graphs first |
+| 4 | `/lab/cockpit` | One-URL Cockpit — iframes + action bar |
+| 5 | `/lab/deck` | Command Deck — big restart/update buttons |
+
 Sign in if prompted, then bookmark that URL. Equal dense board:
 
 | Zone | What you see |

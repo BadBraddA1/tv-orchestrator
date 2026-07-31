@@ -28,6 +28,8 @@ services:
       # Self-update from Admin → Update (git pull + rebuild)
       - .:/host/project
       - /var/run/docker.sock:/var/run/docker.sock
+      # Lab action bridge → Proxmox pct (optional; create via deploy)
+      - ${PROXMOX_SSH_DIR:-/opt/tv-orchestrator-ssh}:/root/.ssh:ro
     depends_on:
       - ersatztv
 

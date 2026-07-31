@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>3 · Analytics Wall</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/lab.css" />
+  </head>
+  <body>
+    <div class="lab-shell">
+      <header class="lab-top">
+        <div>
+          <p class="eyebrow">Option 3 · Tautulli / Grafana vibe</p>
+          <h1>Analytics Wall</h1>
+        </div>
+        <div id="nav"></div>
+      </header>
+      <p class="meta" style="margin-bottom:0.85rem">Charts fill while this page stays open (samples every ~15s on the server). Leave it up a few minutes for curves.</p>
+      <div id="kpis" class="kpi-row"></div>
+      <div class="grid-2">
+        <section class="panel">
+          <h2>Streams + transcodes</h2>
+          <div class="chart-wrap"><canvas id="chartStreams"></canvas></div>
+          <p class="meta" id="legendStreams">teal = streams · amber = transcodes</p>
+        </section>
+        <section class="panel">
+          <h2>NZB speed + queue depth</h2>
+          <div class="chart-wrap"><canvas id="chartNzb"></canvas></div>
+          <p class="meta">teal = KB/s · amber = queue count</p>
+        </section>
+        <section class="panel">
+          <h2>*arr queues</h2>
+          <div class="chart-wrap"><canvas id="chartArr"></canvas></div>
+          <p class="meta">teal = Sonarr · amber = Radarr</p>
+        </section>
+        <section class="panel">
+          <h2>Right now</h2>
+          <div id="playing"></div>
+        </section>
+      </div>
+    </div>
+    <script type="module">
+      import {
+        ensureAuth, loadBundle, navHtml, renderKpis, renderPlaying, drawLineChart,
+      } from "/js/lab-common.js";
+      document.getElementById("nav").innerHTML = navHtml("/lab/analytics");
+      await ensureAuth();
+      async function tick() {
+        const b = await loadBundle();
+        renderKpis(document.getElementById("kpis"), b);
+        renderPlaying(document.getElementById("playing"), b.overview);
+        drawLineChart(document.getElementById("chartStreams"), b.history, ["streams", "transcodes"]);
+        drawLineChart(document.getElementById("chartNzb"), b.history, ["nzbRateKbps", "nzbQueue"]);
+        drawLineChart(document.getElementById("chartArr"), b.history, ["sonarr", "radarr"]);
+      }
+      await tick();
+      setInterval(tick, 10000);
+    </script>
+  </body>
+</html>

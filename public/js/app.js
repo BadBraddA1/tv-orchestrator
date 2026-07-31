@@ -343,9 +343,9 @@
 
   function maybeRedirectToOps() {
     const next = new URLSearchParams(location.search).get("next");
-    if (next === "/ops" || sessionStorage.getItem("opsReturn") === "1") {
+    if (next === "/ops" || next?.startsWith("/lab") || sessionStorage.getItem("opsReturn") === "1") {
       sessionStorage.removeItem("opsReturn");
-      location.href = "/ops";
+      location.href = next && next.startsWith("/") ? next : "/ops";
       return true;
     }
     return false;

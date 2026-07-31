@@ -84,6 +84,7 @@ import { monitorMoviesOnce, pollMovieDownloadsOnce } from "./workers/movies.js";
 import { maintainChannelsOnce, getBroadcastGuide, listStagingTree } from "./workers/channels.js";
 import { probeErsatzTv, plexTunerSetupHints, buildBroadcastXmltv } from "./services/ersatztv.js";
 import { getOpsOverview } from "./services/ops.js";
+import { getLabBundle, runLabAction, LAB_ACTIONS, sampleOpsHistory, type LabActionId } from "./services/lab.js";
 import {
   tautulliConfigured,
   getActivity,
@@ -923,9 +924,44 @@ async function handleApi(
 
   if (path === "/api/ops/overview" && method === "GET") {
     try {
+      void sampleOpsHistory();
       sendJson(res, 200, await getOpsOverview());
     } catch (err) {
       sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+    }
+    return true;
+  }
+
+  if (path === "/api/lab/bundle" && method === "GET") {
+    try {
+      sendJson(res, 200, await getLabBundle());
+    } catch (err) {
+      sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+    }
+    return true;
+  }
+
+  if (path === "/api/lab/actions" && method === "GET") {
+    sendJson(res, 200, { actions: LAB_ACTIONS });
+    return true;
+  }
+
+  if (path === "/api/lab/action" && method === "POST") {
+    if (auth!.user.role !== "admin") {
+      sendJson(res, 403, { error: "Admin only" });
+      return true;
+    }
+    const body = await readJson<{ id?: string }>(req);
+    const id = (body.id || "") as LabActionId;
+    if (!LAB_ACTIONS.some((a) => a.id === id)) {
+      sendJson(res, 400, { error: "Unknown action" });
+      return true;
+    }
+    try {
+      const result = await runLabAction(id);
+      sendJson(res, result.ok ? 200 : 502, result);
+    } catch (err) {
+      sendJson(res, 502, { ok: false, message: err instanceof Error ? err.message : String(err) });
     }
     return true;
   }
@@ -1263,6 +1299,24 @@ export async function startServer(): Promise<void> {
         return;
       }
 
+      // Dashboard concept lab — five prototypes to A/B
+      const labPages: Record<string, string> = {
+        "/lab": "lab/index.html",
+        "/lab/": "lab/index.html",
+        "/lab/mission": "lab/mission.html",
+        "/lab/pulse": "lab/pulse.html",
+        "/lab/analytics": "lab/analytics.html",
+        "/lab/cockpit": "lab/cockpit.html",
+        "/lab/deck": "lab/deck.html",
+      };
+      if (labPages[url.pathname] && (req.method || "GET") === "GET") {
+        const filePath = join(publicDir, labPages[url.pathname]);
+        const data = await readFile(filePath);
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(data);
+        return;
+      }
+
       let path = url.pathname === "/" ? "/index.html" : url.pathname;
       if (path.includes("..")) {
         res.writeHead(400).end("Bad path");
@@ -1289,6 +1343,11 @@ export async function startServer(): Promise<void> {
   server.listen(config.port, "0.0.0.0", () => {
     console.log(`TV Orchestrator → http://0.0.0.0:${config.port}`);
   });
+
+  void sampleOpsHistory();
+  setInterval(() => {
+    void sampleOpsHistory().catch(() => undefined);
+  }, 15_000);
 
   setInterval(() => {
     void monitorOnce().catch((e) => console.warn("[monitor]", e));
