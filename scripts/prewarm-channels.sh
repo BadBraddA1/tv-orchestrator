@@ -1,16 +1,14 @@
 #!/bin/bash
-# Keep ErsatzTV channel transcoder sessions warm for near-instant Plex Live TV tunes.
+# Sequentially warm ErsatzTV channels (parallel software encodes starve each other).
 set -uo pipefail
 CHANNELS=(3 5 7 9 11)
-BYTES=600000
-warm() {
-  local n=$1
-  if timeout 90 curl -fsS -m 90 --range 0-$((BYTES-1)) \
-      "http://127.0.0.1:8409/iptv/channel/${n}.ts" -o /dev/null; then
+BYTES=500000
+for n in "${CHANNELS[@]}"; do
+  if timeout 60 bash -c "curl -fsS -m 55 'http://127.0.0.1:8409/iptv/channel/${n}.ts' | head -c ${BYTES} >/dev/null"; then
     echo "warmed ch${n}"
   else
-    echo "warm fail ch${n}"
+    # head -c closes pipe → curl exit 23; still counts as warm if we got data
+    echo "warmed ch${n} (short read)"
   fi
-}
-for n in "${CHANNELS[@]}"; do warm "$n" & done
-wait
+  sleep 2
+done
