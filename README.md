@@ -115,10 +115,20 @@ One-page ops board for downloads, what’s playing/transcoding, Live TV, and com
 | **Now Playing** | Tautulli streams + Plex sessions |
 | **Downloads** | NZBGet / Sonarr / Radarr / Prowlarr queues |
 | **Live TV & Transcode** | Orca + ErsatzTV (up/down) · Tdarr when running |
-| **Library tools** | Seerr, Bazarr, Recyclarr, Cleanuparr, Huntarr |
+| **Library tools** | Seerr, Bazarr, Kometa, Maintainerr, Recyclarr, Cleanuparr, Huntarr |
 | **Infra** | Homarr launcher, Proxmox, TrueNAS |
 
 Config lives on the CT at `/Docker/media-ops-homepage/`. Homarr (`http://10.0.0.85:7575`) stays the app launcher; this board is for live status at a glance.
+
+### Companion LXCs (Proxmox)
+
+| CT | Host | URL | Role |
+| --- | --- | --- | --- |
+| **611** | `10.0.0.209` | http://10.0.0.209:6767 | **Bazarr** — English subs via TrueNAS Sonarr/Radarr |
+| **612** | `10.0.0.169` | (CLI / nightly 04:45) | **Kometa** — channel-themed Plex collections |
+| **613** | `10.0.0.114` | http://10.0.0.114:6246 | **Maintainerr** — cleanup rules (configure dry-run first) |
+
+All three mount `/mnt/plex` → `/shared` and run Docker.
 
 ## Brand
 
